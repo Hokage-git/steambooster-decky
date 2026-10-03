@@ -10,7 +10,7 @@ export function presentFrame(entry:WindowEntry, host:HTMLElement):()=>void {
     const width=entry.popup?(entry.width??378):box.width;
     const height=entry.popup?(entry.height??322):box.height;
     const scale=entry.popup?Math.min(1.35,Math.max(0,box.width-32)/width,Math.max(0,box.height-32)/height):1;
-    Object.assign(node.style,{display:'block',position:'fixed',zIndex:'100',
+    Object.assign(node.style,{display:'block',position:'fixed',zIndex:'2147483647',
       width:width+'px',height:height+'px',
       left:(box.left+(box.width-width*scale)/2)+'px',top:(box.top+(box.height-height*scale)/2)+'px',
       transform:`scale(${scale})`,transformOrigin:'top left',borderRadius:entry.popup?'12px':'0',

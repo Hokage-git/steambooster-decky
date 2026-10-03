@@ -46,6 +46,7 @@ try{
  });
  const bounds=await page.locator('#remote').boundingBox();
  assert.ok(Math.abs(bounds.width-378*1.35)<1);
+ assert.equal(await page.locator('#topup').evaluate(n=>getComputedStyle(n).zIndex),'2147483647');
  assert.ok(Math.abs(bounds.x-(1280-bounds.width)/2)<1);
  await remote.goto(remote.url());
  await remote.waitForFunction(()=>window.detected===true);

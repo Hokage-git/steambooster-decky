@@ -26,8 +26,8 @@ function notify(error:unknown) {
 }
 function navigate(url:string) {
   if(!safeNavigation(url)) throw Error('Недопустимый адрес');
-  Navigation.CloseSideMenus();
   Navigation.NavigateToSteamWeb(url);
+  Navigation.CloseSideMenus();
 }
 function hide(id:string) {
   const entry=relay?.windows.get(id);
@@ -48,11 +48,11 @@ async function createFrame(entry:Omit<WindowEntry,'frame'>):Promise<Frame> {
     if(destroyed||event.source!==node.contentWindow||event.origin!==origin) return;
     const data=event.data;
     if(!data||typeof data!=='object') return;
-    if(data.__sbEmbed===true && data.type==='sb:ready') node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.2'}},origin);
+    if(data.__sbEmbed===true && data.type==='sb:ready') node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.3'}},origin);
     else relay?.post({kind:'window-message',windowId:entry.id,data});
   };
   window.addEventListener('message',message);
-  node.addEventListener('load',()=>{if(entry.url)node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.2'}},origin);});
+  node.addEventListener('load',()=>{if(entry.url)node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.3'}},origin);});
   const loaded=new Promise<void>((resolve,reject)=>{
     if(entry.url) {resolve();return;}
     const timer=setTimeout(()=>reject(Error('Страница не загрузилась')),4000);
@@ -74,7 +74,7 @@ function configure(config:{secret:string}) {
     show:(id)=>{
       const entry=relay?.windows.get(id);
       if(entry?.external&&entry.url){navigate(entry.url);return;}
-      const previous=activeId;activeId=id;if(previous===id){changed();return;} Navigation.CloseSideMenus();if(!previous)Navigation.Navigate(ROUTE);changed();
+      const previous=activeId;activeId=id;if(previous===id){changed();return;} if(!previous){Navigation.Navigate(ROUTE);Navigation.CloseSideMenus();}changed();
     },
     hide, navigate, changed,
   });
