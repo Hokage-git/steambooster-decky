@@ -58,3 +58,10 @@ test('payment windows request native browser navigation', async () => {
   assert.equal((sent[0] as any).ok, true);
   assert.deepEqual(shown, ['payment']);
 });
+test('popup dimensions survive relay registration for native layout',async()=>{
+ const {relay}=fixture();
+ await relay.receive({kind:'attach-popup',popupId:'topup',html:'form',width:378,height:322,__sbsec:'secret'});
+ assert.equal(relay.windows.get('topup')?.width,378);
+ assert.equal(relay.windows.get('topup')?.height,322);
+ relay.close();
+});

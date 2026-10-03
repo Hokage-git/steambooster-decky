@@ -37,6 +37,12 @@ class Website:
         result = await self.cdp.send('Page.addScriptToEvaluateOnNewDocument', {'source': self.script + '\n' + self.store_script}, session)
         self.scripts[session] = result['identifier']
         await self.cdp.send('Runtime.enable', session=session)
+        # Cross-site iframes have independent CDP targets in Chromium. Install
+        # the bridge before their site scripts perform one-time app detection.
+        await self.cdp.send('Target.setAutoAttach', {
+            'autoAttach': True, 'waitForDebuggerOnStart': True, 'flatten': True,
+            'filter': [{'type': 'iframe'}, {'exclude': True}],
+        }, session)
 
     async def event(self, message):
         session = message.get('sessionId')
@@ -122,6 +128,7 @@ class Website:
                 pass
         for session, script_id in self.scripts.items():
             try:
+                await self.cdp.send('Target.setAutoAttach', {'autoAttach': False, 'waitForDebuggerOnStart': False, 'flatten': True}, session, timeout=2)
                 await self.cdp.send('Page.removeScriptToEvaluateOnNewDocument', {'identifier': script_id}, session, timeout=2)
                 await self.cdp.send('Runtime.removeBinding', {'name': self.binding}, session, timeout=2)
                 await self.cdp.send('Runtime.removeBinding', {'name': self.navigation_binding}, session, timeout=2)

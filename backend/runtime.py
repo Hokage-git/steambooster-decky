@@ -217,7 +217,7 @@ class Runtime:
         status = await self.inspect(session, context)
         if not can_claim(status, self.owner):
             raise RuntimeError('conflict: framework already present')
-        manifest = {'injectorVersion': 'decky-0.1.1', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
+        manifest = {'injectorVersion': 'decky-0.1.2', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
         prefix = (VENDOR/'bootstrap.js').read_text().replace('__MANIFEST__', json.dumps(manifest))
         await self.cdp.evaluate(prefix + f';globalThis.__sb_decky_owner={json.dumps(self.owner)};', session, context)
         # Track ownership immediately so even a failed bundle is cleaned up.
@@ -250,24 +250,51 @@ class Runtime:
     async def events(self):
         while not self.cdp.closed:
             message = await self.cdp.events.get()
-            method, session, params = message['method'], message.get('sessionId'), message.get('params', {})
-            # Binding calls may await collectors: never block context invalidation behind them.
-            if method == 'Runtime.bindingCalled':
-                self.spawn(self.website.event(message))
-                continue
-            await self.website.event(message)
-            if method == 'Runtime.executionContextCreated':
-                context = params['context']
-                if context.get('auxData', {}).get('isDefault'):
-                    self.frames.add((session, context['id']))
-                if context.get('auxData', {}).get('isDefault') and context.get('origin') == 'https://store.steampowered.com':
-                    self.spawn(self.inject_store(session, context['id']))
-            elif method == 'Runtime.executionContextDestroyed':
-                self.bus_targets.discard((session, params['executionContextId']))
-                self.frames.discard((session, params['executionContextId']))
-            elif method == 'Runtime.executionContextsCleared':
-                self.bus_targets = {item for item in self.bus_targets if item[0] != session}
-                self.frames = {item for item in self.frames if item[0] != session}
+            try:
+                await self.handle_event(message)
+            except (RuntimeError, ConnectionError, TimeoutError) as error:
+                # A frame can disappear between discovery and injection. One
+                # navigation must not terminate discovery for every other frame.
+                LOG.debug('frame event failed: %s', type(error).__name__)
+
+    async def handle_event(self, message):
+        method, session, params = message['method'], message.get('sessionId'), message.get('params', {})
+        if method == 'Target.attachedToTarget':
+            child = params['sessionId']
+            try:
+                if params.get('targetInfo', {}).get('type') == 'iframe':
+                    await self.website.watch(child)
+                    # The document may already exist when Chromium pauses the
+                    # new renderer; new-document scripts alone are then too late.
+                    await self.cdp.evaluate(self.website.script + '\n' + self.website.store_script, child, timeout=5)
+            finally:
+                await self.cdp.send('Runtime.runIfWaitingForDebugger', session=child)
+            return
+        if method == 'Target.detachedFromTarget':
+            child = params['sessionId']
+            self.website.forget(child)
+            self.website.sessions.discard(child)
+            self.website.scripts.pop(child, None)
+            self.frames = {item for item in self.frames if item[0] != child}
+            self.bus_targets = {item for item in self.bus_targets if item[0] != child}
+            return
+        # Binding calls may await collectors: never block invalidation behind them.
+        if method == 'Runtime.bindingCalled':
+            self.spawn(self.website.event(message))
+            return
+        if method == 'Runtime.executionContextCreated':
+            context = params['context']
+            if context.get('auxData', {}).get('isDefault'):
+                self.frames.add((session, context['id']))
+            if context.get('auxData', {}).get('isDefault') and context.get('origin') == 'https://store.steampowered.com':
+                self.spawn(self.inject_store(session, context['id']))
+        elif method == 'Runtime.executionContextDestroyed':
+            self.bus_targets.discard((session, params['executionContextId']))
+            self.frames.discard((session, params['executionContextId']))
+        elif method == 'Runtime.executionContextsCleared':
+            self.bus_targets = {item for item in self.bus_targets if item[0] != session}
+            self.frames = {item for item in self.frames if item[0] != session}
+        await self.website.event(message)
 
     async def inject_store(self, session, context):
         if (session, context) in self.bus_targets:

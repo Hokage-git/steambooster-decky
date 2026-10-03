@@ -2,7 +2,7 @@ import { safeNavigation } from './actions.ts';
 
 export type Message = Record<string, any>;
 export type Frame = { node: HTMLIFrameElement | null; destroy: () => void; send: (data: unknown) => void };
-export type WindowEntry = { id: string; title: string; url?: string; html?: string; popup: boolean; external?: boolean; visible: boolean; frame: Frame };
+export type WindowEntry = { id: string; title: string; url?: string; html?: string; popup: boolean; external?: boolean; visible: boolean; width?:number; height?:number; frame: Frame };
 export type RelayEnvironment = {
   post: (data: Message) => void;
   create: (entry: Omit<WindowEntry, 'frame'>) => Frame | Promise<Frame>;
@@ -40,7 +40,7 @@ export class DeckyRelay {
           if (message.url && !safeNavigation(message.url)) throw new Error('Unsafe URL');
           if (message.html && (typeof message.html !== 'string' || message.html.length > 2*1024*1024)) throw new Error('Invalid HTML');
           if (!message.url && !message.html) throw new Error('Window has no content');
-          const entry = {id, title: String(message.title ?? 'SteamBooster'), url: message.url, html: message.html, popup: kind === 'attach-popup', external: kind === 'external-window-open', visible:false};
+          const entry = {id, title: String(message.title ?? 'SteamBooster'), url: message.url, html: message.html, width:Number.isFinite(message.width)?Math.min(1920,Math.max(240,message.width)):undefined, height:Number.isFinite(message.height)?Math.min(1200,Math.max(200,message.height)):undefined, popup: kind === 'attach-popup', external: kind === 'external-window-open', visible:false};
           this.pending.add(id);
           try {
             const frame = await this.env.create(entry);

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { ButtonItem, PanelSection, PanelSectionRow, ToggleField, Navigation, staticClasses, Focusable, TextField, GamepadButton } from '@decky/ui';
-import { callable, definePlugin, routerHook, toaster } from '@decky/api';
+import { callable, definePlugin, routerHook } from '@decky/api';
 import { FaSteam } from 'react-icons/fa';
 import { pageUrl, safeNavigation } from './actions.ts';
+import { presentFrame } from './frame-layout.ts';
 import { DeckyRelay } from './relay.ts';
 import type { Frame, WindowEntry, Message } from './relay.ts';
 
@@ -18,7 +19,11 @@ let channel: BroadcastChannel | undefined;
 let activeId: string | undefined;
 const listeners=new Set<()=>void>();
 function changed() { for(const listener of listeners) listener(); }
-function notify(error:unknown) { toaster.toast({title:'SteamBooster',body: error instanceof Error ? error.message : String(error)}); }
+let lastError='';
+function notify(error:unknown) {
+  lastError=error instanceof Error?error.message:typeof error==='string'?error:'Не удалось выполнить действие';
+  changed();
+}
 function navigate(url:string) {
   if(!safeNavigation(url)) throw Error('Недопустимый адрес');
   Navigation.CloseSideMenus();
@@ -26,7 +31,7 @@ function navigate(url:string) {
 }
 function hide(id:string) {
   const entry=relay?.windows.get(id);
-  if(entry?.frame.node) { entry.frame.node.style.display='none'; document.body.appendChild(entry.frame.node); }
+  if(entry?.frame.node) { entry.frame.node.style.display='none'; }
   if(activeId===id) { activeId=undefined;Navigation.NavigateBack(); }
 }
 async function createFrame(entry:Omit<WindowEntry,'frame'>):Promise<Frame> {
@@ -43,10 +48,11 @@ async function createFrame(entry:Omit<WindowEntry,'frame'>):Promise<Frame> {
     if(destroyed||event.source!==node.contentWindow||event.origin!==origin) return;
     const data=event.data;
     if(!data||typeof data!=='object') return;
-    if(data.kind==='sb:embed' && data.v===1) node.contentWindow?.postMessage({kind:'sb:ready',v:1},origin);
+    if(data.__sbEmbed===true && data.type==='sb:ready') node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.2'}},origin);
     else relay?.post({kind:'window-message',windowId:entry.id,data});
   };
   window.addEventListener('message',message);
+  node.addEventListener('load',()=>{if(entry.url)node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.2'}},origin);});
   const loaded=new Promise<void>((resolve,reject)=>{
     if(entry.url) {resolve();return;}
     const timer=setTimeout(()=>reject(Error('Страница не загрузилась')),4000);
@@ -59,7 +65,7 @@ async function createFrame(entry:Omit<WindowEntry,'frame'>):Promise<Frame> {
   catch(error) { node.remove();window.removeEventListener('message',message);throw error; }
   return {node,destroy:()=>{destroyed=true;node.remove();window.removeEventListener('message',message);},send:(data)=>node.contentWindow?.postMessage(data,origin)};
 }
-function reset() { relay?.close();relay=undefined;channel?.close();channel=undefined;activeId=undefined;changed(); }
+function reset() { lastError='';relay?.close();relay=undefined;channel?.close();channel=undefined;activeId=undefined;changed(); }
 function configure(config:{secret:string}) {
   reset();
   channel=new BroadcastChannel('sb_cmd');
@@ -87,6 +93,8 @@ async function openPage(kind:string) {
 function Content() {
   const [status,update]=useState<Status>({phase:'connecting',message:'Запуск',steamId:null,enabled:true});
   const [busy,setBusy]=useState(false);
+  const [,rerender]=useState(0);
+  useEffect(()=>{const update=()=>rerender(n=>n+1);listeners.add(update);return()=>{listeners.delete(update);};},[]);
   useEffect(()=>{
     let mounted=true,request=false;
     const poll=async()=>{if(request)return;request=true;try{const value=await getStatus();if(mounted)update(value);}catch{if(mounted)update(s=>({...s,phase:'disconnected',message:'Бэкенд Decky недоступен'}));}finally{request=false;}};
@@ -96,6 +104,7 @@ function Content() {
   const run=async(fn:()=>Promise<unknown>)=>{setBusy(true);try{await fn();}catch(error){notify(error);}finally{setBusy(false);}};
   const ready=status.phase==='ready'&&!busy;
   return <PanelSection title='SteamBooster'>
+    {lastError&&<PanelSectionRow><div role='alert'>{lastError}</div></PanelSectionRow>}
     <PanelSectionRow><div>{status.message||status.phase}{status.steamId&&<div style={{fontSize:12}}>Steam ID: {status.steamId}</div>}</div></PanelSectionRow>
     <PanelSectionRow><ToggleField label='Включён' checked={status.enabled} disabled={busy} onChange={value=>void run(async()=>update(await setEnabled(value)))}/></PanelSectionRow>
     <PanelSectionRow><ButtonItem layout='below' disabled={!ready} onClick={()=>void run(()=>openPage('catalog'))}>Каталог игр</ButtonItem></PanelSectionRow>
@@ -111,54 +120,57 @@ function Content() {
 }
 function WindowPage() {
   const [,render]=useState(0);
-  const [control,setControl]=useState<Control>({label:'Выберите элемент',input:false,value:''});
+  const [control,setControl]=useState<Control>({label:'',input:false,value:''});
   const [text,setText]=useState('');
-  const [busy,setBusy]=useState(false);
+  const [editing,setEditing]=useState(false);
+  const [error,setError]=useState('');
+  const inFlight=useRef(false);
   const host=useRef<HTMLDivElement>(null);
   const id=activeId;
   const entry=id?relay?.windows.get(id):undefined;
   useEffect(()=>{const listener=()=>render(n=>n+1);listeners.add(listener);return()=>{listeners.delete(listener);};},[]);
   useEffect(()=>{
-    const node=entry?.frame.node;
-    if(!node||!host.current)return;
-    host.current.appendChild(node);node.style.display='block';
+    if(!entry||!host.current)return;
+    const hideFrame=presentFrame(entry,host.current);
     return()=>{
-      node.style.display='none';
-      if(relay?.windows.get(entry.id)===entry&&node.isConnected)document.body.appendChild(node);
+      hideFrame();
       if(activeId===entry.id){
         activeId=undefined;entry.visible=false;
         relay?.post(entry.popup?{kind:'popup-hide-event',popupId:entry.id}:{kind:'window-hide-event',windowId:entry.id});
       }
     };
   },[entry]);
-  const action=async(kind:string,value='')=>{
-    if(!id||busy)return;
-    setBusy(true);
-    try{const result=await browserAction('sb-decky:'+id,kind,value);setControl(result);setText(result.value);}
-    catch(error){notify(error);}finally{setBusy(false);}
+  const action=async(kind:string,value='',edit=false)=>{
+    if(!id||inFlight.current)return;
+    inFlight.current=true;
+    try{
+      const result=await browserAction('sb-decky:'+id,kind,value);
+      setControl(result);setText(result.value);setError('');
+      if(edit&&result.input)setEditing(true);
+      if(kind==='text')setEditing(false);
+    }catch(error){
+      // Focus acquisition can race navigation. It must never generate toasts
+      // or trigger another focus/render/failure loop.
+      if(kind!=='read')setError(error instanceof Error?error.message:'Страница ещё загружается');
+    }finally{inFlight.current=false;}
   };
-  const close=()=>{if(id)relay?.hide(id);else Navigation.NavigateBack();};
-  return <Focusable style={{height:'100%',padding:18,boxSizing:'border-box',display:'flex',flexDirection:'column'}} onCancel={close} onCancelActionDescription='Назад'>
-    <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:8}}>
-      <ButtonItem onClick={close}>Назад</ButtonItem><span>{entry?.title??'SteamBooster'}</span>
-    </div>
-    <Focusable style={{flex:1,minHeight:0}} onActivate={()=>void action('activate')} onGamepadDirection={event=>{
+  const close=()=>{if(editing){setEditing(false);return;}if(id)relay?.hide(id);else Navigation.NavigateBack();};
+  return <Focusable ref={host} preferredFocus noFocusRing
+    style={{position:'absolute',inset:0,background:entry?.popup?'radial-gradient(ellipse at top,#263a50,#101720 70%)':'#171a21'}}
+    onCancel={close} onCancelActionDescription='Назад'
+    onActivate={()=>void action('activate')} onOKActionDescription='Нажать'
+    onSecondaryButton={()=>void action('read','',true)} onSecondaryActionDescription='Ввести текст'
+    onGamepadDirection={event=>{
+      if(editing)return;
       const direction=event.detail.button;
       void action(direction===GamepadButton.DIR_UP||direction===GamepadButton.DIR_LEFT?'prev':'next');
       event.stopPropagation();
-    }} onOKActionDescription='Нажать' onGamepadFocus={()=>void action('read')}>
-      <div ref={host} style={{height:'100%'}}/>
-    </Focusable>
-    <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8}}>
-      <ButtonItem disabled={busy} onClick={()=>void action('prev')}>Предыдущее</ButtonItem>
-      <ButtonItem disabled={busy} onClick={()=>void action('next')}>Следующее</ButtonItem>
-      <ButtonItem disabled={busy} onClick={()=>void action('activate')}>Нажать</ButtonItem>
-      <span style={{fontSize:12}}>{control.label}</span>
-    </div>
-    {control.input&&<div style={{display:'flex',gap:8,marginTop:8}}>
-      <TextField label='Текст выбранного поля' value={text} onChange={event=>setText(event.target.value)}/>
-      <ButtonItem disabled={busy} onClick={()=>void action('text',text)}>Применить</ButtonItem>
-    </div>}
+    }}>
+    {error&&<div role='alert' style={{position:'absolute',bottom:12,left:12,right:12,zIndex:200,padding:12,background:'#172a3a'}}>{error}</div>}
+    {editing&&<Focusable onCancel={()=>setEditing(false)} style={{position:'absolute',bottom:12,left:24,right:24,zIndex:200,padding:16,background:'#172a3a',borderRadius:8}}>
+      <TextField label={control.label||'Текст выбранного поля'} value={text} onChange={event=>setText(event.target.value)}/>
+      <ButtonItem onClick={()=>void action('text',text)}>Применить</ButtonItem>
+    </Focusable>}
   </Focusable>;
 }
 
