@@ -1,0 +1,31 @@
+{
+  "id": "booster-addfunds",
+  "version": "1.0.2",
+  "apiVersion": 1,
+  "contextKinds": [
+    "web",
+    "main"
+  ],
+  "urlPatterns": [
+    "^https://store\\.steampowered\\.com(/.*)?$"
+  ],
+  "grantedCapabilities": [
+    "ui",
+    "steam",
+    "configs",
+    "bus",
+    "pages",
+    "net"
+  ],
+  "allowedHosts": [
+    "steambalance.cc"
+  ],
+  "subscribeTopics": [
+    "booster-checkout.keys.response",
+    "booster-checkout.keys.email-required",
+    "booster-checkout.keys.purchase-result",
+    "booster-checkout.keys.ready",
+    "booster-checkout.user.snapshot",
+    "booster-checkout.keys.config"
+  ]
+}

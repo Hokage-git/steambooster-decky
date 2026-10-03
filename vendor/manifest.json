@@ -1,0 +1,90 @@
+{
+  "repository": "https://github.com/Hokage-git/steambooster-linux",
+  "commit": "0b462bb853acb54540c1d65a68cac2f6061f9e06",
+  "frameworkVersion": "1.0.2",
+  "plugins": [
+    {
+      "id": "booster-checkout",
+      "version": "1.0.2",
+      "apiVersion": 1,
+      "contextKinds": [
+        "main"
+      ],
+      "urlPatterns": [],
+      "grantedCapabilities": [
+        "ui",
+        "steam",
+        "configs",
+        "bus",
+        "keys",
+        "net"
+      ],
+      "allowedHosts": [
+        "steambalance.cc"
+      ],
+      "subscribeTopics": [
+        "booster-addfunds.topup-requested",
+        "booster-addfunds.user.snapshot.request",
+        "booster-addfunds.keys.request",
+        "booster-addfunds.keys.purchase",
+        "booster-addfunds.keys.config.request"
+      ]
+    },
+    {
+      "id": "booster-addfunds",
+      "version": "1.0.2",
+      "apiVersion": 1,
+      "contextKinds": [
+        "web",
+        "main"
+      ],
+      "urlPatterns": [
+        "^https://store\\.steampowered\\.com(/.*)?$"
+      ],
+      "grantedCapabilities": [
+        "ui",
+        "steam",
+        "configs",
+        "bus",
+        "pages",
+        "net"
+      ],
+      "allowedHosts": [
+        "steambalance.cc"
+      ],
+      "subscribeTopics": [
+        "booster-checkout.keys.response",
+        "booster-checkout.keys.email-required",
+        "booster-checkout.keys.purchase-result",
+        "booster-checkout.keys.ready",
+        "booster-checkout.user.snapshot",
+        "booster-checkout.keys.config"
+      ]
+    },
+    {
+      "id": "booster-rateaccount",
+      "version": "1.0.0",
+      "apiVersion": 1,
+      "contextKinds": [
+        "main"
+      ],
+      "urlPatterns": [],
+      "grantedCapabilities": [
+        "ui",
+        "steam"
+      ]
+    }
+  ],
+  "sha256": {
+    "SteamBalance-LICENSE.txt": "f600432c0224d8fbc2d67a3a8508427f4cd6f497ed8c3462b466e4b1c5b1f219",
+    "booster-addfunds.js": "2cfdd5c1ca96e704c66c568942ea450734e70987e7685160ccda154767c70ac2",
+    "booster-addfunds.meta.json": "2f7eec2440a59f595114a5952f1bdcbc21ea8838d0c5bdae7061b9169128dec5",
+    "booster-checkout.js": "5a3ed909c845bc7c4e5959163d8ea452f2c91a090cf8ac9f5915f72c44fb0935",
+    "booster-checkout.meta.json": "efb98472d4622b3b0f4e62c7b9f7ee0004c4680da64e4704f082288c9c16ade2",
+    "booster-rateaccount.js": "9666da665c6cdda2a27e3d2fccdd764c3d072094e6ae1224f4c6f480743ad53b",
+    "booster-rateaccount.meta.json": "1a288cedd6ec10dd8f0bd7eddb4272d457222dbd6cd1473d1022e4ff7f318724",
+    "bootstrap.js": "934cd2ea9f3b6b3f5b239e8a6c384572de2d94004bc5e85ea0e03cdb29fea257",
+    "framework.js": "85e0ddf5c63f29b4252c424023a214870440cc8b241aeef81306f5ef26ab2a59",
+    "website.js": "776f8622576fbebf375f5261eac90b0eeda7a6e110445efb71e1392598d4f653"
+  }
+}
