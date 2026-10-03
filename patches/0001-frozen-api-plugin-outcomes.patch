@@ -1,8 +1,21 @@
 diff --git a/source/booster-framework/src/index.ts b/source/booster-framework/src/index.ts
-index 5d49ed9..bd3b685 100644
+index 5d49ed9..6834f91 100644
 --- a/source/booster-framework/src/index.ts
 +++ b/source/booster-framework/src/index.ts
-@@ -211,10 +211,11 @@ declare global {
+@@ -137,6 +137,12 @@ declare global {
+     return;
+   }
+ 
++  // Decky may run its UI in SharedJSContext itself. Keep the collectors and
++  // the main API in one bootstrap so a second injection cannot tear either down.
++  const deckyCombined = (globalThis as { __SB_PLUGINS_MANIFEST__?: { deckyCombined?: boolean } })
++    .__SB_PLUGINS_MANIFEST__?.deckyCombined === true;
++  if (contextKind === ContextKind.Main && deckyCombined) startRelay(scope, sec);
++
+   const registry = createRegistry();
+   const bridge = createBridge(undefined, { resolverName: sec.resolverName });
+   // Framework identity bridge: stamps frameworkToken on every native IPC
+@@ -211,10 +217,11 @@ declare global {
    // _pluginOutcomes getter: exposes the drain result for dev diagnostics
    // (globalThis.__sb_internal._pluginOutcomes) once drainPluginsOnReady sets
    // it on api. Returns undefined until the drain completes.
@@ -15,7 +28,7 @@ index 5d49ed9..bd3b685 100644
    };
  
    if (sec.hostAccount) {
-@@ -305,7 +306,7 @@ declare global {
+@@ -305,7 +312,7 @@ declare global {
    // after logging a diagnostic.
    void api.lifecycle.ready().then(async () => {
      try {

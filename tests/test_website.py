@@ -85,3 +85,21 @@ class WebsiteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(navigated, ['https://store.steampowered.com/app/1245620/'])
         await self.host.event({'method':'Runtime.bindingCalled','sessionId':'web','params':{'name':self.host.navigation_binding,'executionContextId':7,'payload':'https://evil.test/'}})
         self.assertEqual(len(navigated), 1)
+
+    async def test_store_actions_only_from_live_store_context(self):
+        actions=[]
+        async def action(name): actions.append(name)
+        self.host.store_action=action
+        await self.create('https://store.steampowered.com')
+        self.assertIn('SteamBooster',self.cdp.calls[-1][0])
+        async def press(name='catalog', context=7):
+            await self.host.event({'method':'Runtime.bindingCalled','sessionId':'web','params':{'name':self.host.store_binding,'executionContextId':context,'payload':name}})
+        await press()
+        await press('valuation')
+        await press('topup')
+        await press('arbitrary')
+        await press(context=99)
+        self.assertEqual(actions,['catalog','valuation','topup'])
+        await self.host.event({'method':'Runtime.executionContextDestroyed','sessionId':'web','params':{'executionContextId':7}})
+        await press()
+        self.assertEqual(len(actions),3)

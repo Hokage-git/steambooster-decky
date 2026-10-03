@@ -157,7 +157,7 @@ class Runtime:
         main = None
         # Decky's frontend marks its actual renderer; titles differ by Steam UI/language.
         for target in targets:
-            if target.get('type') != 'page' or target['id'] == shared['id']:
+            if target.get('type') != 'page':
                 continue
             try:
                 session = await self.session_for(target)
@@ -180,11 +180,13 @@ class Runtime:
         for meta in manifest['plugins']:
             entry = dict(meta, required=False, url=f"https://localhost/{meta['id']}.js", sha256=manifest['sha256'][meta['id']+'.js'], token=secrets.token_hex(16))
             self.entries.append(entry)
-        self.website = Website(self.cdp, self.invoke, self.navigate_store)
+        self.website = Website(self.cdp, self.invoke, self.navigate_store, self.store_action)
         self.spawn(self.events())
         await self.cdp.evaluate(f'globalThis.__sb_decky_configure({json.dumps({"secret":self.secrets["relaySecret"], "uiKinds": UI_KINDS})})', self.main_session)
-        await self.inject(shared_session, 'shared', [])
-        await self.inject(self.main_session, 'main', [p for p in self.entries if 'main' in p['contextKinds']])
+        combined = shared_session == self.main_session
+        if not combined:
+            await self.inject(shared_session, 'shared', [])
+        await self.inject(self.main_session, 'main', [p for p in self.entries if 'main' in p['contextKinds']], combined=combined)
         for session in self.sessions.values():
             await self.website.watch(session)
         await self.wait_plugins(self.main_session, [p['id'] for p in self.entries if 'main' in p['contextKinds']])
@@ -211,17 +213,17 @@ class Runtime:
                     session = await self.session_for(target)
                     await self.website.watch(session)
 
-    async def inject(self, session, kind, entries, context=None):
+    async def inject(self, session, kind, entries, context=None, combined=False):
         status = await self.inspect(session, context)
         if not can_claim(status, self.owner):
             raise RuntimeError('conflict: framework already present')
-        manifest = {'injectorVersion': 'decky-0.1.0', 'contextKind': kind, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
+        manifest = {'injectorVersion': 'decky-0.1.1', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
         prefix = (VENDOR/'bootstrap.js').read_text().replace('__MANIFEST__', json.dumps(manifest))
         await self.cdp.evaluate(prefix + f';globalThis.__sb_decky_owner={json.dumps(self.owner)};', session, context)
         # Track ownership immediately so even a failed bundle is cleaned up.
         self.bus_targets.add((session, context))
         # Shared keeps account/library/key collectors. Decky's Main UI adapter owns popup/navigation messages.
-        if kind == 'shared':
+        if kind == 'shared' or combined:
             filter_script = '''(()=>{const Original=globalThis.BroadcastChannel;
             globalThis.__sb_decky_originalBC=Original;
             const kinds=new Set(__KINDS__); const secret=__SECRET__;
@@ -238,7 +240,7 @@ class Runtime:
         try:
             await self.cdp.evaluate((VENDOR/'framework.js').read_text(), session, context)
         finally:
-            if kind == 'shared':
+            if kind == 'shared' or combined:
                 await self.cdp.evaluate('globalThis.BroadcastChannel=globalThis.__sb_decky_originalBC; delete globalThis.__sb_decky_originalBC;', session, context)
         self.spawn(self.pump(session, context))
         for entry in entries:
@@ -302,6 +304,10 @@ class Runtime:
             except Exception:
                 self.state['steamId'] = None
             await asyncio.sleep(5)
+
+    async def store_action(self, action):
+        if action in ("catalog", "valuation", "topup") and self.main_session and self.cdp:
+            await self.cdp.evaluate(f"globalThis.__sb_decky_open({json.dumps(action)})", self.main_session, timeout=5)
 
     async def navigate_store(self, url):
         if self.main_session and self.cdp:

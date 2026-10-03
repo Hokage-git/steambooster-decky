@@ -10,9 +10,13 @@ VENDOR = Path(__file__).resolve().parents[1] / 'vendor'
 
 
 class Website:
-    def __init__(self, cdp, invoke, navigate=None):
+    def __init__(self, cdp, invoke, navigate=None, store_action=None):
         self.cdp, self.invoke = cdp, invoke
         self.navigate = navigate
+        self.store_action = store_action
+        self.store_contexts = set()
+        self.store_binding = "__sb_store_" + secrets.token_hex(12)
+        self.store_script = (Path(__file__).parent/"store-tools.js").read_text().replace("__STORE_BINDING__", json.dumps(self.store_binding))
         self.binding = '__sb_host_' + secrets.token_hex(12)
         self.navigation_binding = '__sb_nav_' + secrets.token_hex(12)
         self.resolver = '__sb_reply_' + secrets.token_hex(12)
@@ -29,7 +33,8 @@ class Website:
         self.sessions.add(session)
         await self.cdp.send('Runtime.addBinding', {'name': self.binding}, session)
         await self.cdp.send('Runtime.addBinding', {'name': self.navigation_binding}, session)
-        result = await self.cdp.send('Page.addScriptToEvaluateOnNewDocument', {'source': self.script}, session)
+        await self.cdp.send('Runtime.addBinding', {'name': self.store_binding}, session)
+        result = await self.cdp.send('Page.addScriptToEvaluateOnNewDocument', {'source': self.script + '\n' + self.store_script}, session)
         self.scripts[session] = result['identifier']
         await self.cdp.send('Runtime.enable', session=session)
 
@@ -44,10 +49,19 @@ class Website:
             if context.get('auxData', {}).get('isDefault') and trusted_origin(context.get('origin')):
                 self.contexts[(session, context['id'])] = set()
                 await self.cdp.evaluate(self.script, session, context['id'])
+            if context.get('auxData', {}).get('isDefault') and context.get('origin') == 'https://store.steampowered.com':
+                self.store_contexts.add((session, context['id']))
+                await self.cdp.evaluate(self.store_script, session, context['id'])
         elif method == 'Runtime.executionContextDestroyed':
+            self.store_contexts.discard((session, params['executionContextId']))
             self.contexts.pop((session, params['executionContextId']), None)
         elif method == 'Runtime.executionContextsCleared':
             self.forget(session)
+        elif method == 'Runtime.bindingCalled' and params.get('name') == self.store_binding:
+            action = params.get('payload')
+            if ((session, params['executionContextId']) in self.store_contexts and self.store_action
+                    and action in ('catalog', 'valuation', 'topup')):
+                await self.store_action(action)
         elif method == 'Runtime.bindingCalled' and params.get('name') == self.binding:
             await self.receive(session, params['executionContextId'], params.get('payload'))
         elif method == 'Runtime.bindingCalled' and params.get('name') == self.navigation_binding:
@@ -57,6 +71,7 @@ class Website:
                 await self.navigate(url)
 
     def forget(self, session):
+        self.store_contexts = {key for key in self.store_contexts if key[0] != session}
         for key in list(self.contexts):
             if key[0] == session:
                 self.contexts.pop(key, None)
@@ -92,6 +107,12 @@ class Website:
             pass
 
     async def close(self):
+        for session, context in list(self.store_contexts):
+            try:
+                await self.cdp.evaluate("globalThis.__sb_decky_store_tools?.()", session, context, timeout=2)
+            except Exception:
+                pass
+        self.store_contexts.clear()
         contexts = list(self.contexts)
         self.contexts.clear()
         for session, context in contexts:
@@ -104,6 +125,7 @@ class Website:
                 await self.cdp.send('Page.removeScriptToEvaluateOnNewDocument', {'identifier': script_id}, session, timeout=2)
                 await self.cdp.send('Runtime.removeBinding', {'name': self.binding}, session, timeout=2)
                 await self.cdp.send('Runtime.removeBinding', {'name': self.navigation_binding}, session, timeout=2)
+                await self.cdp.send('Runtime.removeBinding', {'name': self.store_binding}, session, timeout=2)
             except Exception:
                 pass
         self.sessions.clear()

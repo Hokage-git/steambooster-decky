@@ -76,3 +76,22 @@ test('original plugins initialize through Decky UI adapter and expose current ac
     for(const channel of [...Channel.channels])channel.close();
   }
 });
+
+test('combined Game Mode bootstrap preserves both the shared relay and main API', async()=>{
+  const window=new Window({url:'https://steamloopback.host/index.html'});
+  (window as any).BroadcastChannel=Channel;
+  try {
+    window.eval(asset('bootstrap.js').replace('__MANIFEST__',JSON.stringify({contextKind:'main',deckyCombined:true,plugins:[],_sec:{relaySecret:'combined',resolverName:'__sb_resolve'}})));
+    window.eval(asset('framework.js'));
+    assert.equal((window as any).__sb_relay_started,true);
+    assert.equal(typeof (window as any).sb?.plugins.register,'function');
+    (window as any).__sb_internal?.rollbackAll();
+    (window as any).__sb_relay_teardown?.();
+    assert.equal((window as any).__sb_relay_started,false);
+  } finally {
+    (window as any).__sb_internal?.teardown();
+    (window as any).__sb_relay_teardown?.();
+    await window.happyDOM.close();
+    for(const channel of [...Channel.channels])channel.close();
+  }
+});

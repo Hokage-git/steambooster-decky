@@ -97,3 +97,24 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
                 await runtime.inject('main','main',[])
             await runtime.cleanup()
             self.assertTrue(any('rollbackAll' in expression for expression,_ in cdp.calls))
+
+    async def test_decky_in_shared_context_is_injected_once_as_combined_main(self):
+        from backend.cdp import CDP
+        cdp=GenerationCDP()
+        original=cdp.evaluate
+        async def evaluate(expression, session, context=None, timeout=None):
+            if expression.startswith('({sb:'):
+                return {'sb':False,'relay':False,'owner':None,'decky':session=='shared'}
+            return await original(expression,session,context,timeout)
+        cdp.evaluate=evaluate
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime=await self.make_runtime(temporary)
+            async def quick_sleep(_): await asyncio.get_running_loop().run_in_executor(None, lambda: None)
+            with patch.object(CDP,'connect',return_value=cdp), patch('backend.runtime.asyncio.sleep',quick_sleep):
+                with self.assertRaisesRegex(ConnectionError,'shared relay stopped'):
+                    await runtime.connect()
+            injected=[expression for expression,_ in cdp.calls if '__SB_PLUGINS_MANIFEST__ =' in expression]
+            self.assertEqual(len(injected),1)
+            self.assertIn('"deckyCombined": true',injected[0])
+            self.assertIn('"contextKind": "main"',injected[0])
+            await runtime.cleanup()

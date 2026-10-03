@@ -77,6 +77,11 @@ function configure(config:{secret:string}) {
 }
 async function openPage(kind:string) {
   if(!relay) throw Error('Подключение ещё не готово');
+  if(kind==='topup'){
+    const id='booster-checkout__sb_topup';
+    if(!relay.windows.has(id))throw Error('Форма пополнения ещё загружается');
+    relay.show(id);return;
+  }
   await relay.receive({kind:'open-window',windowId:'decky_'+kind,title:kind==='catalog'?'Каталог':'Оцени аккаунт',url:pageUrl(kind),requestId:0,__sbsec:relay.secret});
 }
 function Content() {
@@ -159,6 +164,7 @@ function WindowPage() {
 
 declare global {
   interface Window {
+    __sb_decky_open?:(kind:string)=>Promise<void>;
     __sb_decky_frontend?:boolean;
     __sb_decky_configure?:(config:{secret:string})=>void;
     __sb_decky_reset?:()=>void;
@@ -166,12 +172,13 @@ declare global {
   }
 }
 export default definePlugin(()=>{
+  window.__sb_decky_open=async(kind)=>{try{await openPage(kind);}catch(error){notify(error);}};
   window.__sb_decky_frontend=true;
   window.__sb_decky_configure=configure;
   window.__sb_decky_reset=reset;
   window.__sb_decky_navigate=navigate;
   routerHook.addRoute(ROUTE,WindowPage);
   return {name:'SteamBooster',titleView:<div className={staticClasses.Title}>SteamBooster</div>,content:<Content/>,icon:<FaSteam/>,
-    onDismount(){reset();routerHook.removeRoute(ROUTE);delete window.__sb_decky_frontend;delete window.__sb_decky_configure;delete window.__sb_decky_reset;delete window.__sb_decky_navigate;}
+    onDismount(){delete window.__sb_decky_open;reset();routerHook.removeRoute(ROUTE);delete window.__sb_decky_frontend;delete window.__sb_decky_configure;delete window.__sb_decky_reset;delete window.__sb_decky_navigate;}
   };
 });
