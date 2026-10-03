@@ -75,6 +75,9 @@
       ]
     }
   ],
+  "patches": {
+    "0001-frozen-api-plugin-outcomes.patch": "c94433def9e2ad1a6ba1f69c0c32fe05dfa23969708a50d5d680447a257b4a05"
+  },
   "sha256": {
     "SteamBalance-LICENSE.txt": "f600432c0224d8fbc2d67a3a8508427f4cd6f497ed8c3462b466e4b1c5b1f219",
     "booster-addfunds.js": "2cfdd5c1ca96e704c66c568942ea450734e70987e7685160ccda154767c70ac2",
@@ -84,7 +87,13 @@
     "booster-rateaccount.js": "9666da665c6cdda2a27e3d2fccdd764c3d072094e6ae1224f4c6f480743ad53b",
     "booster-rateaccount.meta.json": "1a288cedd6ec10dd8f0bd7eddb4272d457222dbd6cd1473d1022e4ff7f318724",
     "bootstrap.js": "934cd2ea9f3b6b3f5b239e8a6c384572de2d94004bc5e85ea0e03cdb29fea257",
-    "framework.js": "85e0ddf5c63f29b4252c424023a214870440cc8b241aeef81306f5ef26ab2a59",
-    "website.js": "776f8622576fbebf375f5261eac90b0eeda7a6e110445efb71e1392598d4f653"
+    "framework.js": "35244f7188f86adf74c1f44b3ef990364fba7b360554263c7a102b91effb3dc2",
+    "licenses/decky-api-LICENSE": "38965778962143b687faff3a5b69ef22dd228e0ca4f5a3752893e016ede87c6a",
+    "licenses/decky-rollup-LICENSE": "74ecbc20692307830a989f3b803b8ce5c94a9490f52014e94b86495317d7de11",
+    "licenses/decky-ui-LICENSE": "38965778962143b687faff3a5b69ef22dd228e0ca4f5a3752893e016ede87c6a",
+    "licenses/react-icons-LICENSE": "a0c1e5484fb4c79e2a683834253864e640e1ca57cb57b807bd5bddb72bbbf74f",
+    "licenses/tslib-CopyrightNotice.txt": "da16ddb65f8ca390998fb99223d0112498b56b45784d00afd77ff8ce1ac4de8b",
+    "licenses/tslib-LICENSE.txt": "210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751",
+    "website.js": "924552aab4461e7f7f3cc70e0187dad5d27d001c83261aadc4cb304e209217c6"
   }
 }

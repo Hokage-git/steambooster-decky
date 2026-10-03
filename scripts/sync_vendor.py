@@ -12,15 +12,20 @@ ROOT = Path(__file__).resolve().parents[1]
 PIN = '0b462bb853acb54540c1d65a68cac2f6061f9e06'
 
 
-def sync(source):
+def sync(source, patched_source):
     commit = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     if commit != PIN:
         raise RuntimeError(f'expected source commit {PIN}, got {commit}')
     framework = source/'source/booster-framework'
+    patch = ROOT/'patches/0001-frozen-api-plugin-outcomes.patch'
+    patched_commit = subprocess.check_output(['git', '-C', str(patched_source), 'rev-parse', 'HEAD'], text=True).strip()
+    diff = subprocess.check_output(['git', '-C', str(patched_source), 'diff', '--', 'source/booster-framework/src/index.ts', 'source/booster-framework/src/plugins/bootstrap.ts'], text=True)
+    if patched_commit != PIN or diff != patch.read_text():
+        raise RuntimeError('patched framework does not match the reviewed patch at the pinned commit')
     plugins = source/'source/steambooster-plugins/packages'
     vendor = ROOT/'vendor'
     vendor.mkdir(exist_ok=True)
-    shutil.copyfile(framework/'out/booster-framework.js', vendor/'framework.js')
+    shutil.copyfile(patched_source/'source/booster-framework/out/booster-framework.js', vendor/'framework.js')
     shutil.copyfile(framework/'LICENSE', vendor/'SteamBalance-LICENSE.txt')
     entries = []
     for name in ['booster-checkout', 'booster-addfunds', 'booster-rateaccount']:
@@ -36,17 +41,18 @@ def sync(source):
     (vendor/'bootstrap.js').write_text(bootstrap)
     # JS serialization preserves the exact already-tested website API and link handler.
     bridge_uri = (launcher/'dist/website-bridge.js').as_uri()
-    catalog_uri = (launcher/'dist/catalog-link-bridge.js').as_uri()
     program = (f"import {{websiteBridgeScript}} from {json.dumps(bridge_uri)};"
-               f"import {{CATALOG_LINK_BRIDGE_SCRIPT}} from {json.dumps(catalog_uri)};"
-               "process.stdout.write(websiteBridgeScript('__BINDING__','__RESOLVER__')+';'+CATALOG_LINK_BRIDGE_SCRIPT);")
+               "process.stdout.write(websiteBridgeScript('__BINDING__','__RESOLVER__'));")
     script = subprocess.check_output(['node', '--input-type=module', '-e', program], text=True)
     (vendor/'website.js').write_text(script)
     manifest = {'repository': 'https://github.com/Hokage-git/steambooster-linux', 'commit': commit, 'frameworkVersion': '1.0.2', 'plugins': entries,
-                'sha256': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(vendor.iterdir()) if p.name != 'manifest.json'}}
+                'patches': {patch.name: hashlib.sha256(patch.read_bytes()).hexdigest()},
+                'sha256': {p.relative_to(vendor).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(vendor.rglob('*')) if p.is_file() and p.name != 'manifest.json'}}
     (vendor/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('source', type=Path, help='built steambooster-linux checkout at the pinned commit')
-    sync(parser.parse_args().source.resolve())
+    parser.add_argument('--patched-source', type=Path, required=True, help='pinned checkout with the reviewed framework patch applied and built')
+    args = parser.parse_args()
+    sync(args.source.resolve(), args.patched_source.resolve())

@@ -65,28 +65,4 @@
     });
     w.addEventListener('pagehide', dispose, { once: true });
     w.dispatchEvent(new w.Event('sb:embed'));
-})("__BINDING__","__RESOLVER__");
-(function () {
-  if (window.__sbCatalogueLinkBridgeInstalled) return;
-  if (location.hostname !== 'steambalance.cc' ||
-      !location.pathname.startsWith('/booster/catalogue')) return;
-  window.__sbCatalogueLinkBridgeInstalled = true;
-  document.addEventListener('click', function (event) {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey ||
-        event.ctrlKey || event.shiftKey || event.altKey) return;
-    var node = event.target;
-    if (!(node instanceof Element)) return;
-    // The official catalogue handles purchase buttons through purchaseKey.
-    if (node.closest('button, [role=button]')) return;
-    var anchor = node.closest('a[href]');
-    if (!anchor) return;
-    var href;
-    try { href = new URL(anchor.href, location.href); } catch (_) { return; }
-    if (href.protocol !== 'https:' || href.hostname !== 'store.steampowered.com' ||
-        !/^\/app\/\d+(?:\/|$)/.test(href.pathname)) return;
-    // The default target is this iframe.  A top-level navigation keeps the
-    // same Steam window and lets Store apply its normal frame policy.
-    event.preventDefault();
-    window.top.location.assign(href.href);
-  }, true);
-})();
+})("__BINDING__","__RESOLVER__")

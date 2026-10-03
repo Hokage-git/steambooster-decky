@@ -1,0 +1,39 @@
+diff --git a/source/booster-framework/src/index.ts b/source/booster-framework/src/index.ts
+index 5d49ed9..bd3b685 100644
+--- a/source/booster-framework/src/index.ts
++++ b/source/booster-framework/src/index.ts
+@@ -211,10 +211,11 @@ declare global {
+   // _pluginOutcomes getter: exposes the drain result for dev diagnostics
+   // (globalThis.__sb_internal._pluginOutcomes) once drainPluginsOnReady sets
+   // it on api. Returns undefined until the drain completes.
++  let pluginOutcomes: unknown[] | undefined;
+   window.__sb_internal = {
+     rollbackAll: () => api.lifecycle.rollbackAll(),
+     teardown: () => {},
+-    get _pluginOutcomes() { return (api as unknown as { _pluginOutcomes?: unknown[] })._pluginOutcomes; },
++    get _pluginOutcomes() { return pluginOutcomes; },
+   };
+ 
+   if (sec.hostAccount) {
+@@ -305,7 +306,7 @@ declare global {
+   // after logging a diagnostic.
+   void api.lifecycle.ready().then(async () => {
+     try {
+-      await drainPluginsOnReady({
++      pluginOutcomes = await drainPluginsOnReady({
+         registry: pluginRegistry,
+         manifest: readPluginsManifest(),
+         realSb: api,
+diff --git a/source/booster-framework/src/plugins/bootstrap.ts b/source/booster-framework/src/plugins/bootstrap.ts
+index 1a4e499..1d08afc 100644
+--- a/source/booster-framework/src/plugins/bootstrap.ts
++++ b/source/booster-framework/src/plugins/bootstrap.ts
+@@ -278,7 +278,7 @@ export async function drainPluginsOnReady(args: DrainPluginsArgs): Promise<Plugi
+     };
+   });
+ 
+-  (realSb as SbApiWithOutcomes)._pluginOutcomes = outcomes;
++  if (!Object.isFrozen(realSb)) (realSb as SbApiWithOutcomes)._pluginOutcomes = outcomes;
+   return outcomes;
+ }
+ 
