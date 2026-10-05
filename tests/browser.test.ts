@@ -39,5 +39,6 @@ test('controller selects visible fields, writes through native setter and clicks
   invoke('activate');
   assert.equal(clicks,1);
   assert.equal(invoke('next').label,'Amount');
+  assert.equal(window.document.querySelector('button')!.style.outline,'','only the selected control is highlighted');
   window.happyDOM.abort();
 });

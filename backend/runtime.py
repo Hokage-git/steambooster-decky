@@ -217,7 +217,7 @@ class Runtime:
         status = await self.inspect(session, context)
         if not can_claim(status, self.owner):
             raise RuntimeError('conflict: framework already present')
-        manifest = {'injectorVersion': 'decky-0.1.3', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
+        manifest = {'injectorVersion': 'decky-0.1.4', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
         prefix = (VENDOR/'bootstrap.js').read_text().replace('__MANIFEST__', json.dumps(manifest))
         await self.cdp.evaluate(prefix + f';globalThis.__sb_decky_owner={json.dumps(self.owner)};', session, context)
         # Track ownership immediately so even a failed bundle is cleaned up.

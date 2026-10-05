@@ -55,7 +55,7 @@ test('payment windows request native browser navigation', async () => {
   const {relay, sent, shown} = fixture();
   await relay.receive({kind:'external-window-open', id:'payment', requestId:5, url:'https://bank.example/pay', __sbsec:'secret'});
   assert.equal(relay.windows.get('payment')?.external, true);
-  assert.equal((sent[0] as any).ok, true);
+  assert.equal((sent.find((message:any)=>message.kind==='external-window-open-reply') as any).ok, true);
   assert.deepEqual(shown, ['payment']);
 });
 test('popup dimensions survive relay registration for native layout',async()=>{

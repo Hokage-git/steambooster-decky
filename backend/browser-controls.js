@@ -18,6 +18,11 @@ function browserControl(action, value) {
   }
   if (action === 'activate') current.click();
   if (action !== 'read') {
+    const previous = globalThis.__sb_decky_focusStyle;
+    if (previous?.element !== current) {
+      if (previous) previous.element.style.outline = previous.outline;
+      globalThis.__sb_decky_focusStyle = {element:current, outline:current.style.outline};
+    }
     current.focus({preventScroll:true});
     current.scrollIntoView({block:'nearest'});
     current.style.outline='3px solid #1a9fff';

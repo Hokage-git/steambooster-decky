@@ -54,8 +54,8 @@ export class DeckyRelay {
           this.show(id);
         }
         if (kind === 'external-window-open') {
-          this.post({kind:'external-window-open-reply',requestId:message.requestId,ok:true});
           this.show(id);
+          this.post({kind:'external-window-open-reply',requestId:message.requestId,ok:true});
         }
       } else if (['popup-show','popup-toggle','window-show','window-bring'].includes(kind)) {
         if (kind === 'popup-toggle' && this.windows.get(id)?.visible) this.hide(id);
@@ -84,8 +84,8 @@ export class DeckyRelay {
   }
   show(id: string) {
     const entry=this.windows.get(id); if(!entry || this.closed) return;
-    entry.visible=true;
     this.env.show(id);
+    entry.visible=true;
     this.post(entry.popup?{kind:'popup-show-event',popupId:id}:{kind:'window-show-event',windowId:id});
     this.env.changed();
   }
