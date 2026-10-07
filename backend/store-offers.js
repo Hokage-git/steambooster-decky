@@ -22,7 +22,8 @@
         #sb-decky-offers input{font:inherit;min-width:180px;max-width:100%;padding:10px;background:#111e2a;color:#fff;border:1px solid #6389a1;box-sizing:border-box}
         #sb-decky-offers .sb-offer-status{width:100%;line-height:1.4}
       `;
-      document.head.append(style);
+      const mountStyle=()=>{if(!stopped&&document.head&&style.parentElement!==document.head)document.head.append(style);};
+      const styleObserver=new MutationObserver(mountStyle);styleObserver.observe(document,{childList:true,subtree:true});mountStyle();
       const registration=api.pages.register({
         name:'decky-store-offers',match:{url:/^https:\/\/store\.steampowered\.com\/app\/\d+/},
         mount(page){
@@ -34,7 +35,7 @@
           const nonce=`decky-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
           const pending=new Map();const subscriptions=[];
           const root=document.createElement('section');root.id='sb-decky-offers';root.setAttribute('aria-label','Предложения SteamBalance');
-          let visible=false;const comparisons=[];
+          let shown=false;const comparisons=[];
           const rub=value=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(value);
           function savings(item){
             if(!Number.isSafeInteger(item.packageId)||item.packageId<=0)return '';
@@ -50,16 +51,19 @@
             }
             return '';
           }
+          const visible=el=>{if(!el)return false;for(let node=el;node;node=node.parentElement){const css=getComputedStyle(node);if(node.hidden||css.display==='none'||css.visibility==='hidden')return false;}return true;};
+          let started=false;
           const reconcile=()=>{
-            if(disposed)return;
+            if(disposed||!document.documentElement)return;
             for(const {item,node} of comparisons){const text=savings(item);if(node.textContent!==text)node.textContent=text;}
             // These IDs are emitted by Steam itself. On responsive pages Steam
             // moves game_area_purchase into purchaseOptionsContent.
-            const host=document.querySelector('#game_area_purchase')||document.querySelector('#purchaseOptionsContent');
-            if(visible&&host){if(root.parentElement!==host)host.append(root);}
+            const host=[document.querySelector('#game_area_purchase'),document.querySelector('#purchaseOptionsContent')].find(visibleHost=>visibleHost&&visible(visibleHost));
+            if(shown&&host){if(root.parentElement!==host)host.append(root);}
             else root.remove();
+            if(host&&!started){started=true;load();}
           };
-          const observer=new MutationObserver(reconcile);observer.observe(document,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['value']});
+          const observer=new MutationObserver(reconcile);observer.observe(document,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['value','hidden','style','class']});
           function finish(id,result){
             const request=pending.get(id);if(!request)return;
             clearTimeout(request.timeout);clearInterval(request.retry);pending.delete(id);
@@ -79,11 +83,11 @@
           subscribe('email-required',data=>{if(data?.reqId&&pending.has(data.reqId)&&data.reqId!==list?.id)finish(data.reqId,{emailRequired:true});});
           subscribe('purchase-result',data=>{if(data?.reqId&&pending.has(data.reqId)&&data.reqId!==list?.id)finish(data.reqId,data);});
           subscribe('ready',()=>list?.send());
-          function button(label){const node=document.createElement('button');node.type='button';node.textContent=label;return node;}
+          function button(label){const node=document.createElement('button');node.type='button';node.setAttribute('data-panel',JSON.stringify({focusable:true,clickOnActivate:true}));node.textContent=label;return node;}
           function heading(){comparisons.length=0;root.replaceChildren();const title=document.createElement('h3');title.textContent='Ключи SteamBalance';root.append(title);}
           function load(){
             if(disposed||list)return;
-            heading();const status=document.createElement('p');status.textContent='Загрузка предложений…';status.setAttribute('role','status');root.append(status);visible=true;reconcile();
+            heading();const status=document.createElement('p');status.textContent='Загрузка предложений…';status.setAttribute('role','status');root.append(status);shown=true;reconcile();
             request('request',{appid},result=>{
               if(result.error||!Array.isArray(result.items)){
                 status.textContent='Не удалось загрузить предложения.';const retry=button('Повторить');retry.addEventListener('click',load);root.append(retry);return;
@@ -91,7 +95,7 @@
               const seen=new Set();
               const items=result.items.filter(item=>item&&item.isActive===true&&Number.isSafeInteger(item.itemId)&&item.itemId>0&&typeof item.name==='string'&&item.name.trim()&&Number.isFinite(item.price)&&item.price>0&&!seen.has(item.itemId)&&seen.add(item.itemId));
               heading();for(const item of items)renderOffer(item);
-              visible=items.length>0;reconcile();
+              shown=items.length>0;reconcile();
             });
           }
           function renderOffer(item){
@@ -134,10 +138,10 @@
             for(const request of pending.values()){clearTimeout(request.timeout);clearInterval(request.retry);}pending.clear();list=null;
             for(const unsub of subscriptions)unsub();root.remove();page.signal.removeEventListener('abort',cleanup);
           }
-          teardownPage=cleanup;page.signal.addEventListener('abort',cleanup,{once:true});load();return cleanup;
+          teardownPage=cleanup;page.signal.addEventListener('abort',cleanup,{once:true});reconcile();return cleanup;
         }
       });
-      function stop(){if(stopped)return;stopped=true;teardownPage();style.remove();registration?.unregister?.();ctx.signal?.removeEventListener('abort',stop);}
+      function stop(){if(stopped)return;stopped=true;teardownPage();styleObserver.disconnect();style.remove();registration?.unregister?.();ctx.signal?.removeEventListener('abort',stop);}
       ctx.signal?.addEventListener('abort',stop,{once:true});return stop;
     }
   });

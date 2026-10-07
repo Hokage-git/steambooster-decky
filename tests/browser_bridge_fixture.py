@@ -20,6 +20,10 @@ async def main():
             async def invoke(delegate,args):
                 if delegate=='hostAccount' and args==['getSteamId']:
                     return {'steamId':'76561198000000000'}
+                if delegate=='keysPurchase':
+                    return {'ok':False,'error':'no-email'}
+                if delegate=='keysPurchaseEmail':
+                    return {'ok':True,'emailReceived':args[2]}
                 if delegate=='rateAccountData' and args==[]:
                     return {'account':{'steam_id':'76561198000000000'}, 'library':{'ready':True,'games':[{'appid':570}]}, 'inventory':{'partial':False,'items':[{'appid':570,'assetid':'test-item'}]}}
                 raise ValueError('unsupported fixture method')

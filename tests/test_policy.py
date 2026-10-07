@@ -12,12 +12,13 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(host_call('getSteamId', []), ('hostAccount', ['getSteamId']))
         self.assertEqual(host_call('getRateAccountData', []), ('rateAccountData', []))
         self.assertEqual(host_call('purchaseKey', [5, {'gameName': 'Test'}]), ('keysPurchase', [5, 'Test']))
+        self.assertEqual(host_call('purchaseKey', [5, {'gameName':'Test','email':'buyer@example.com'}]), ('keysPurchaseEmail',[5,'Test','buyer@example.com']))
         self.assertEqual(host_call('activateKey', ['ABC']), ('keysActivate', ['ABC']))
         self.assertEqual(host_call('getStoreCountry', ['76561198000000000']), ('hostAccount', ['getStoreCountry', '76561198000000000']))
 
     def test_bad_arguments(self):
         from backend.policy import host_call
-        for method, args in [('purchaseKey', [True]), ('purchaseKey', [-1]), ('purchaseKey', [1.2]), ('activateKey', ['']), ('activateKey', ['x'*257]), ('getStoreCountry', ['bad']), ('eval', [])]:
+        for method, args in [('purchaseKey', [True]), ('purchaseKey', [5, {'email':'bad'}]), ('purchaseKey', [5, {'email':'a@b.com\nheader'}]), ('purchaseKey', [-1]), ('purchaseKey', [1.2]), ('activateKey', ['']), ('activateKey', ['x'*257]), ('getStoreCountry', ['bad']), ('eval', [])]:
             with self.assertRaises(ValueError):
                 host_call(method, args)
 

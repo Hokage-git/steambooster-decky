@@ -62,11 +62,11 @@ async function createFrame(entry:Omit<WindowEntry,'frame'>):Promise<Frame> {
     if(destroyed||event.source!==node.contentWindow||event.origin!==origin) return;
     const data=event.data;
     if(!data||typeof data!=='object') return;
-    if(data.__sbEmbed===true && data.type==='sb:ready') node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.5'}},origin);
+    if(data.__sbEmbed===true && data.type==='sb:ready') node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.6'}},origin);
     else relay?.post({kind:'window-message',windowId:entry.id,data});
   };
   ownerWindow.addEventListener('message',message);
-  node.addEventListener('load',()=>{if(entry.url)node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.5'}},origin);});
+  node.addEventListener('load',()=>{if(entry.url)node.contentWindow?.postMessage({__sbEmbed:true,v:1,type:'sb:embed',windowId:entry.id,app:{name:'SteamBooster',version:'0.1.6'}},origin);});
   const loaded=new Promise<void>((resolve,reject)=>{
     if(entry.url) {resolve();return;}
     const timer=setTimeout(()=>reject(Error('Страница не загрузилась')),4000);

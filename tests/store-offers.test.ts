@@ -6,8 +6,8 @@ const file=new URL('../backend/store-offers.js',import.meta.url);
 const tick=()=>new Promise(r=>setTimeout(r,25));
 const until=async(check:()=>boolean)=>{for(let i=0;i<40&&!check();i++)await tick();assert.ok(check(),'DOM reconciliation completes');};
 const offer={itemId:41,name:'Portal Deluxe',regionLabel:'Россия / СНГ',price:799,isActive:true,packageId:999};
-async function fixture(html='<div id="game_area_purchase"><div class="game_area_purchase_game"><input name="subid" value="123"><span class="discount_final_price">999 ₽</span></div></div>',manualClock=false){
- const w=new Window({url:'https://store.steampowered.com/app/620/'});w.document.body.innerHTML=html;
+async function fixture(html='<div id="game_area_purchase"><div class="game_area_purchase_game"><input name="subid" value="123"><span class="discount_final_price">999 ₽</span></div></div>',manualClock=false,earlyDocument=false){
+ const w=new Window({url:'https://store.steampowered.com/app/620/'});w.document.body.innerHTML=html;if(earlyDocument)w.document.documentElement.remove();
  const timers=new Map<number,{cb:()=>void,ms:number,interval:boolean}>();let timerId=0;
  if(manualClock){
   (w as any).setTimeout=(cb:()=>void,ms:number)=>{timers.set(++timerId,{cb,ms,interval:false});return timerId;};
@@ -89,4 +89,19 @@ test('list timeout is retryable but purchase timeout locks the action and unload
   f.fire(30000);buy.click();assert.equal(f.sent.length,count);assert.equal(f.timers.size,0);assert.equal(buy.disabled,true);
  }finally{await f.close();assert.equal(f.timers.size,0);}
  const pending=await fixture(undefined,true);assert.equal(pending.timers.size,2);await pending.close();assert.equal(pending.timers.size,0);
+});
+
+test('early document waits for a purchase host and recovers style when head is created or replaced',async()=>{
+ const f=await fixture('',false,true);try{assert.equal(f.sent.length,0);
+ const html=f.w.document.createElement('html');html.innerHTML='<head></head><body><div id="purchaseOptionsContent"></div></body>';f.w.document.append(html);
+ await until(()=>f.sent.length===1);f.reply([offer]);await until(()=>!!f.w.document.querySelector('#purchaseOptionsContent #sb-decky-offers'));
+ assert.ok(f.w.document.head.querySelector('#sb-decky-offers-style'));
+ const head=f.w.document.createElement('head');f.w.document.head.replaceWith(head);await until(()=>!!head.querySelector('#sb-decky-offers-style'));
+ assert.deepEqual(JSON.parse(f.w.document.querySelector('[data-item-id]')!.getAttribute('data-panel')!),{focusable:true,clickOnActivate:true});
+ }finally{await f.close();}
+});
+test('visible responsive purchase host wins over hidden desktop edition area',async()=>{
+ const f=await fixture('<div hidden><div id="game_area_purchase"></div></div><div id="purchaseOptionsContent"></div>');try{f.reply([offer]);await tick();
+ assert.equal(f.w.document.querySelector('#sb-decky-offers')?.parentElement?.id,'purchaseOptionsContent');
+ }finally{await f.close();}
 });

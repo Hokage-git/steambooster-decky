@@ -32,3 +32,25 @@ test('store control is absent on other origins',async()=>{
  const w=new Window({url:'https://example.com/'});
  try{w.eval(script());assert.equal(w.document.querySelector('#sb-decky-store-tools'),null);}finally{await w.happyDOM.close();}
 });
+test('modern store home mounts beside its nav even without legacy or catalog controls',async()=>{
+ const w=new Window({url:'https://store.steampowered.com/?inGamepadUI=1'});
+ try{w.document.body.innerHTML='<div data-featuretarget="store-menu-v7"><nav>Steam Store</nav></div>';w.eval(script());
+ const b=w.document.querySelector('#sb-decky-store-tools');assert.equal(b?.parentElement?.getAttribute('data-featuretarget'),'store-menu-v7');
+ assert.deepEqual(JSON.parse(b!.getAttribute('data-panel')!),{focusable:true,clickOnActivate:true});
+ }finally{(w as any).__sb_decky_store_tools?.();await w.happyDOM.close();}
+});
+test('hidden desktop catalog never captures the control and visibility changes reconcile',async()=>{
+ const w=new Window({url:'https://store.steampowered.com/?inGamepadUI=1'});
+ try{w.document.body.innerHTML='<div style="display:none" id="desktop"><nav><button data-booster-storenav-btn>Catalog</button></nav></div><div data-featuretarget="store-menu-v7"></div><div id="purchaseOptionsContent"></div>';w.eval(script());
+ assert.equal(w.document.querySelector('#sb-decky-store-tools')?.parentElement?.getAttribute('data-featuretarget'),'store-menu-v7');
+ w.document.querySelector<HTMLElement>('[data-featuretarget]')!.hidden=true;await tick();
+ assert.equal(w.document.querySelector('#sb-decky-store-tools')?.parentElement?.id,'purchaseOptionsContent');
+ }finally{(w as any).__sb_decky_store_tools?.();await w.happyDOM.close();}
+});
+test('early context without document elements recovers when modern store DOM arrives',async()=>{
+ const w=new Window({url:'https://store.steampowered.com/?inGamepadUI=1'});
+ try{w.document.documentElement.remove();assert.doesNotThrow(()=>w.eval(script()));
+ const html=w.document.createElement('html');html.innerHTML='<head></head><body><div data-featuretarget="store-menu-v7"></div></body>';w.document.append(html);await tick();
+ assert.ok(w.document.querySelector('[data-featuretarget] #sb-decky-store-tools'));
+ }finally{(w as any).__sb_decky_store_tools?.();await w.happyDOM.close();}
+});

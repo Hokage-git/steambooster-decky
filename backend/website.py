@@ -21,6 +21,7 @@ class Website:
         self.navigation_binding = '__sb_nav_' + secrets.token_hex(12)
         self.resolver = '__sb_reply_' + secrets.token_hex(12)
         self.script = (VENDOR/'website.js').read_text().replace('__BINDING__', self.binding).replace('__RESOLVER__', self.resolver)
+        self.script += (Path(__file__).parent/'catalog-purchase.js').read_text()
         # Game Mode's top window hosts Decky: navigating it would destroy Steam UI.
         self.script += (Path(__file__).parent/'catalog-links.js').read_text().replace('__NAV__', json.dumps(self.navigation_binding))
         self.sessions = set()

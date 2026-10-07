@@ -32,6 +32,12 @@ try{
  assert.equal(valuation.account.steam_id,'76561198000000000');
  assert.equal(valuation.library.games[0].appid,570);
  assert.equal(valuation.inventory.items[0].assetid,'test-item');
+ await page.locator('#remote').evaluate(node=>{node.style.cssText='position:relative;z-index:1;width:900px;height:700px;border:0';});
+ await remote.evaluate(()=>{window.purchaseResult=null;window.SteamBooster.purchaseKey(41,{gameName:'Fixture Game'}).then(result=>window.purchaseResult=result);});
+ await remote.locator('input[type="email"]').fill('player@example.com');
+ await remote.getByRole('button',{name:'Продолжить покупку'}).click();
+ await remote.waitForFunction(()=>window.purchaseResult?.ok);
+ assert.equal(await remote.evaluate(()=>window.purchaseResult.emailReceived),'player@example.com');
  // Exercise production layout code in Chromium: show/hide cannot reload a form.
  const modules={};
  for(const name of ['topup-theme','frame-layout','actions','relay','navigation','keyboard']){

@@ -98,3 +98,38 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                 request['token']='wrong'
                 self.assertFalse((await r.native(request))['ok'])
                 self.assertEqual(r.cdp.evaluate.call_count,before)
+
+    async def test_catalog_email_purchase_correlates_one_checkout_request(self):
+        from backend.runtime import Runtime
+        from unittest.mock import AsyncMock
+        import asyncio,json
+        with tempfile.TemporaryDirectory() as temporary:
+            r=Runtime(Path(temporary));r.main_session='main';r.secrets={'frameworkToken':'secret'}
+            r.cdp=type('CDP',(),{'closed':False,'evaluate':AsyncMock()})();r.bus_targets=set()
+            task=asyncio.create_task(r.invoke('keysPurchaseEmail',[41,'Test','buyer@example.com']))
+            await asyncio.sleep(0)
+            self.assertEqual(r.cdp.evaluate.call_count,1)
+            expression=r.cdp.evaluate.call_args.args[0]
+            self.assertIn('booster-addfunds.keys.purchase',expression)
+            data=json.loads(expression.split(',',1)[1].removesuffix(')'))
+            self.assertEqual(data['email'],'buyer@example.com')
+            await r.native({'op':'bus.publish','pluginId':'booster-framework','token':'wrong','args':{'topic':'booster-checkout.keys.purchase-result','data':{'reqId':data['reqId'],'ok':True}}})
+            self.assertFalse(task.done())
+            await r.native({'op':'bus.publish','pluginId':'booster-framework','token':'secret','args':{'topic':'booster-checkout.keys.purchase-result','data':{'reqId':data['reqId'],'ok':True}}})
+            self.assertTrue((await task)['ok'])
+            self.assertFalse(r.key_purchases)
+
+    async def test_cancelled_catalog_waiter_is_removed_without_resending(self):
+        from backend.runtime import Runtime
+        from unittest.mock import AsyncMock
+        import asyncio
+        with tempfile.TemporaryDirectory() as temporary:
+            r=Runtime(Path(temporary));r.main_session='main'
+            r.cdp=type('CDP',(),{'closed':False,'evaluate':AsyncMock()})()
+            task=asyncio.create_task(r.invoke('keysPurchaseEmail',[41,'Test','buyer@example.com']))
+            await asyncio.sleep(0)
+            self.assertEqual(len(r.key_purchases),1)
+            task.cancel()
+            await asyncio.gather(task,return_exceptions=True)
+            self.assertFalse(r.key_purchases)
+            self.assertEqual(r.cdp.evaluate.call_count,1)

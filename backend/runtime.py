@@ -50,6 +50,7 @@ class Runtime:
         self.shared_target = None
         self.generation = 0
         self.frames = set()
+        self.key_purchases = {}
 
     def spawn(self, awaitable):
         if len(self.workers) >= 256:
@@ -228,7 +229,7 @@ class Runtime:
         status = await self.inspect(session, context)
         if not can_claim(status, self.owner):
             raise RuntimeError('conflict: framework already present')
-        manifest = {'injectorVersion': 'decky-0.1.5', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
+        manifest = {'injectorVersion': 'decky-0.1.6', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
         prefix = (VENDOR/'bootstrap.js').read_text().replace('__MANIFEST__', json.dumps(manifest))
         await self.cdp.evaluate(prefix + f';globalThis.__sb_decky_owner={json.dumps(self.owner)};', session, context)
         # Track ownership immediately so even a failed bundle is cleaned up.
@@ -329,6 +330,19 @@ class Runtime:
     async def invoke(self, delegate, args):
         if not self.main_session or not self.cdp or self.cdp.closed:
             raise ConnectionError('Steam is reconnecting')
+        if delegate == 'keysPurchaseEmail':
+            if len(self.key_purchases)>=8:
+                raise RuntimeError('purchase already pending')
+            request_id = 'decky-catalog-' + secrets.token_hex(16)
+            future = asyncio.get_running_loop().create_future()
+            self.key_purchases[request_id] = future
+            data = {'reqId':request_id, 'itemId':args[0], 'email':args[2],
+                    'windowTitle':args[1] or 'Покупка ключа', 'windowTaskbarTitle':'SteamBalance'}
+            try:
+                await self.cdp.evaluate('globalThis.__sb_bus_dispatch("booster-addfunds.keys.purchase",'+json.dumps(data)+')', self.main_session)
+                return await asyncio.wait_for(future, 35)
+            finally:
+                self.key_purchases.pop(request_id, None)
         name = self.secrets.get(delegate)
         if not name:
             raise ValueError('unsupported delegate')
@@ -418,6 +432,15 @@ class Runtime:
                 topic = args.get('topic')
                 if not isinstance(topic, str) or not topic or len(topic) > 256:
                     raise ValueError('invalid bus topic')
+                data = args.get('data')
+                if (topic in {'booster-checkout.keys.purchase-result','booster-checkout.keys.email-required'}
+                        and request.get('pluginId') == 'booster-framework'
+                        and self.secrets.get('frameworkToken')
+                        and request.get('token') == self.secrets['frameworkToken']
+                        and isinstance(data, dict) and isinstance(data.get('reqId'), str)):
+                    pending = self.key_purchases.get(data['reqId'])
+                    if pending and not pending.done():
+                        pending.set_result(data if topic.endswith('purchase-result') else {'ok':False,'error':'no-email'})
                 if topic.startswith('decky-store.'):
                     routes = {'decky-store.keys.request':'booster-addfunds.keys.request',
                               'decky-store.keys.purchase':'booster-addfunds.keys.purchase'}
@@ -464,6 +487,10 @@ class Runtime:
             task.cancel()
         await asyncio.gather(*workers, return_exceptions=True)
         self.workers.clear()
+        for pending in self.key_purchases.values():
+            if not pending.done():
+                pending.cancel()
+        self.key_purchases.clear()
         if self.website:
             await self.website.close()
             self.website = None

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { DeckyRelay } from '../src/relay.ts';
+import { PageNavigation } from '../src/navigation.ts';
 
 class Channel extends EventTarget {
   static channels=new Set<Channel>();
@@ -14,7 +15,7 @@ class Channel extends EventTarget {
 const asset=(name:string)=>readFileSync(new URL('../vendor/'+name,import.meta.url),'utf8');
 const wait=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 
-test('original plugins expose current account and serve scoped Deck store offers through the native bus', async () => {
+test('original plugins expose account data, serve store offers, and recover catalog purchase after email entry', async () => {
   const main=new Window({url:'https://steamloopback.host/'});
   const store=new Window({url:'https://store.steampowered.com/app/620/'});
   (main as any).BroadcastChannel=Channel;
@@ -28,10 +29,12 @@ test('original plugins expose current account and serve scoped Deck store offers
   const secret='test-secret';
   const native:any=JSON.parse(asset('manifest.json'));
   const entries=native.plugins.map((p:any)=>({...p,required:false,url:'https://localhost/'+p.id+'.js',sha256:native.sha256[p.id+'.js'],token:'token-'+p.id}));
-  const manifest={injectorVersion:'decky-test',contextKind:'main',userDisabledPlugins:[],plugins:entries,_sec:{frameworkToken:'framework',resolverName:'__sb_resolve',busDispatchName:'__sb_bus_dispatch',relaySecret:secret,hostAccount:'__hostAccount',rateAccountData:'__rateAccountData'}};
+  const manifest={injectorVersion:'decky-test',contextKind:'main',userDisabledPlugins:[],plugins:entries,_sec:{frameworkToken:'framework',resolverName:'__sb_resolve',busDispatchName:'__sb_bus_dispatch',relaySecret:secret,hostAccount:'__hostAccount',rateAccountData:'__rateAccountData',keysPurchase:'__keysPurchase'}};
   const relayChannel=new Channel('sb_cmd');
   const frames:Window[]=[];
-  const relay=new DeckyRelay(secret,{post:data=>relayChannel.postMessage(data),show:()=>{},hide:()=>{},navigate:()=>{},changed:()=>{},create:entry=>{
+  const paymentURLs:string[]=[];
+  const navigation=new PageNavigation({get:id=>relay.windows.get(id),openPage:()=>{},openWeb:url=>paymentURLs.push(url),back:()=>{},changed:()=>{}});
+  const relay=new DeckyRelay(secret,{post:data=>relayChannel.postMessage(data),show:id=>navigation.show(id),hide:id=>navigation.hide(id),navigate:url=>navigation.openWeb(url),changed:()=>{},create:entry=>{
     const frame=new Window({url:'https://steamloopback.host/'});
     (frame as any).BroadcastChannel=Channel;
     frames.push(frame);
@@ -67,7 +70,9 @@ test('original plugins expose current account and serve scoped Deck store offers
         if(req.op==='net_fetch'){
           const url=new URL(req.args.url);
           const body=url.pathname==='/api/services/steam_keys'
-            ?{data:{items:[{id:41,name:'Portal Deluxe',is_active:true,region_label:'Россия',price:799,package:{id:999,product_type:'game'}}]}}
+            ?req.args.method==='POST'
+              ?{success:true,data:{redirectUrl:'https://bank.example/order/catalog-fixture',uid:'catalog-fixture'}}
+              :{data:{items:[{id:41,name:'Portal Deluxe',is_active:true,region_label:'Россия',price:799,package:{id:999,product_type:'game'}}]}}
             :[];
           result={status:200,ok:true,headers:{},body:JSON.stringify(body)};
         }
@@ -130,6 +135,30 @@ test('original plugins expose current account and serve scoped Deck store offers
     assert.equal(nativeCalls.some(req=>req.op==='net_fetch'&&req.args.method==='POST'),false,'viewing offers must not place an order');
     (store as any).__sb_internal.rollbackAll();
     assert.equal(store.document.querySelector('#sb-decky-offers'),null,'framework rollback removes the adapter');
+
+    // The catalog's existing external delegate cannot collect a missing email.
+    // Its explicit no-email result is safe to recover: no order exists yet.
+    const withoutEmail=await (main as any).__keysPurchase(41,'Portal Deluxe');
+    assert.deepEqual(JSON.parse(JSON.stringify(withoutEmail)),{ok:false,error:'no-email'});
+    const orders=()=>nativeCalls.filter(req=>req.op==='net_fetch'&&req.args.method==='POST');
+    assert.equal(orders().length,0,'missing email must not create an order');
+    assert.deepEqual(paymentURLs,[],'missing email must not open a payment page');
+
+    // The email recovery path uses the original store purchase handler once.
+    // Keep this dispatch explicit so transport retries cannot mask duplicate POSTs.
+    const purchaseId='catalog-email-fixture';
+    (main as any).__sb_bus_dispatch('booster-addfunds.keys.purchase',{
+      reqId:purchaseId,itemId:41,email:'buyer@example.test',windowTitle:'Portal Deluxe',windowTaskbarTitle:'SteamBooster',
+    });
+    const purchaseResult=()=>nativeCalls.find(req=>req.op==='bus.publish'&&req.args.topic==='booster-checkout.keys.purchase-result'&&req.args.data.reqId===purchaseId);
+    const purchaseDeadline=Date.now()+3000;
+    while(!purchaseResult()&&Date.now()<purchaseDeadline)await wait(20);
+    assert.equal(purchaseResult()?.args.data.ok,true,'original handler acknowledges successful payment navigation');
+    assert.equal(orders().length,1,'email recovery creates exactly one order');
+    assert.equal(orders()[0].pluginId,'booster-checkout');
+    assert.equal(orders()[0].args.url,'https://steambalance.cc/api/services/steam_keys');
+    assert.deepEqual(JSON.parse(orders()[0].args.body),{paymentId:'fixture-card',itemId:41,account:'buyer@example.test',login:'test'});
+    assert.deepEqual(paymentURLs,['https://bank.example/order/catalog-fixture']);
   } finally {
     if(pump)clearInterval(pump);
     (main as any).__sb_internal?.rollbackAll();

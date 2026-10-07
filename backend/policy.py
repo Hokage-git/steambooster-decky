@@ -29,5 +29,11 @@ def host_call(method, args):
     if method == 'purchaseKey' and args and type(args[0]) is int and 0 < args[0] <= 9007199254740991:
         options = args[1] if len(args) > 1 and isinstance(args[1], dict) else {}
         name = options.get('gameName')
-        return 'keysPurchase', [args[0], name[:150] if isinstance(name, str) else None]
+        name = name[:150] if isinstance(name, str) else None
+        if 'email' in options:
+            email = options['email']
+            if not isinstance(email, str) or len(email)>254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+                raise ValueError('invalid email')
+            return 'keysPurchaseEmail', [args[0], name, email]
+        return 'keysPurchase', [args[0], name]
     raise ValueError('unsupported method or invalid arguments')
