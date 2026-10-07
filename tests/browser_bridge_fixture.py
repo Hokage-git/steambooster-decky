@@ -20,7 +20,9 @@ async def main():
             async def invoke(delegate,args):
                 if delegate=='hostAccount' and args==['getSteamId']:
                     return {'steamId':'76561198000000000'}
-                raise ValueError('fixture only supports account identity')
+                if delegate=='rateAccountData' and args==[]:
+                    return {'account':{'steam_id':'76561198000000000'}, 'library':{'ready':True,'games':[{'appid':570}]}, 'inventory':{'partial':False,'items':[{'appid':570,'assetid':'test-item'}]}}
+                raise ValueError('unsupported fixture method')
             runtime.website=Website(runtime.cdp,invoke)
             runtime.spawn(runtime.events())
             await runtime.website.watch(session)

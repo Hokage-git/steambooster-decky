@@ -8,7 +8,7 @@ export class PageNavigation {
  constructor(env:Environment){this.env=env;}
  show(id:string){
   const entry=this.env.get(id);
-  if(entry?.external&&entry.url){this.openWeb(entry.url);this.paymentId=id;this.env.changed();return;}
+  if(entry?.url&&!entry.html){this.openWeb(entry.url);if(entry.external)this.paymentId=id;this.env.changed();return;}
   const previous=this.activeId;this.activeId=id;this.returnId=id;
   if(!previous)this.env.openPage();this.env.changed();
  }

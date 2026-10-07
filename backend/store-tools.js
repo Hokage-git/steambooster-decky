@@ -2,20 +2,20 @@
   if(location.origin!=='https://store.steampowered.com')return;
   globalThis.__sb_decky_store_tools?.();
   const binding=__STORE_BINDING__;
-  const bar=document.createElement('nav');
-  bar.id='sb-decky-store-tools';
-  bar.setAttribute('aria-label','SteamBooster');
-  bar.style.cssText='position:sticky;top:0;z-index:1000;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:#1b2838;color:white;box-sizing:border-box;';
-  const title=document.createElement('span');title.textContent='SteamBooster';bar.append(title);
-  for(const [action,label] of [['catalog','Каталог игр'],['valuation','Оцени аккаунт'],['topup','Пополнить баланс']]){
-    const button=document.createElement('button');button.type='button';button.textContent=label;
-    button.className='btnv6_blue_hoverfade btn_medium';button.tabIndex=0;
-    button.style.cssText='padding:8px 12px;cursor:pointer;font:inherit;color:#fff;border:1px solid #67c1f5;border-radius:3px;background:#23465b;';
-    button.addEventListener('click',()=>globalThis[binding]?.(action));
-    bar.append(button);
-  }
-  const mount=()=>{if(document.body&&!bar.isConnected)document.body.prepend(bar);};
+  let disposed=false;
+  const button=document.createElement('button');
+  button.id='sb-decky-store-tools';button.type='button';button.textContent='Пополнить баланс';button.tabIndex=0;
+  button.style.cssText='display:inline-flex;align-items:center;justify-content:center;margin:4px 8px;padding:7px 12px;min-height:36px;border:1px solid #47738d;border-radius:3px;background:#23465b;color:#fff;font:inherit;font-size:14px;cursor:pointer;box-sizing:border-box;';
+  // Native button focus lets Steam/browser navigation own the selected state.
+  button.addEventListener('click',()=>globalThis[binding]?.('topup'));
+  const mount=()=>{
+    if(disposed)return;
+    const catalog=document.querySelector('[data-booster-storenav-btn]');
+    const host=catalog?.parentElement||document.querySelector('#store_nav')||document.querySelector('#game_area_purchase');
+    if(host&&button.parentElement!==host)host.append(button);
+    else if(!host&&button.isConnected)button.remove();
+  };
   const observer=new MutationObserver(mount);
   observer.observe(document,{childList:true,subtree:true});mount();
-  globalThis.__sb_decky_store_tools=()=>{observer.disconnect();bar.remove();delete globalThis.__sb_decky_store_tools;};
+  globalThis.__sb_decky_store_tools=()=>{disposed=true;observer.disconnect();button.remove();delete globalThis.__sb_decky_store_tools;};
 })();

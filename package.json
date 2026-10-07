@@ -1,6 +1,6 @@
 {
   "name": "steambooster-decky",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "SteamBooster catalog, account valuation and purchase offers for Decky Loader",
   "type": "module",
   "license": "MIT",
@@ -13,7 +13,7 @@
     "build": "rollup -c",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:browser": "node scripts/check_browser.mjs"
+    "test:browser": "node scripts/check_browser.mjs && node scripts/check_store.mjs"
   },
   "packageManager": "pnpm@9.15.9",
   "devDependencies": {

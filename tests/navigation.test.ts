@@ -30,3 +30,11 @@ test('a navigation exception restores the current form',()=>{
  assert.equal(nav.activeId,'topup');
  assert.equal(entry.frame.node.style.display,'block');
 });
+test('catalog and account pages use Steam navigation without opening a Decky overlay route',()=>{
+ const calls:string[]=[];
+ const entry:any={url:'https://steambalance.cc/booster/viral',frame:{node:null}};
+ const nav=new PageNavigation({get:()=>entry,openPage:()=>calls.push('overlay'),openWeb:url=>calls.push(url),back:()=>calls.push('back'),changed:()=>{}});
+ nav.show('valuation');
+ assert.deepEqual(calls,[entry.url]);
+ assert.equal(nav.paymentId,undefined,'a remote account page is not a payment');
+});

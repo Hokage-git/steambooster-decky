@@ -21,22 +21,26 @@ try{
   backend.once('exit',code=>{clearTimeout(timeout);reject(Error('backend exited '+code+': '+errors));});
   backend.stdout.on('data',data=>{if(String(data).includes('READY')){clearTimeout(timeout);resolve();}});
  });
- await page.evaluate(()=>{const f=document.createElement('iframe');f.id='remote';f.style.border='0';f.name='sb-decky:valuation';f.src='https://steambalance.cc/booster/viral';document.body.append(f);});
+ await page.evaluate(()=>{const f=document.createElement('iframe');f.id='remote';f.setAttribute('sandbox','allow-scripts allow-same-origin allow-forms allow-popups');f.style.border='0';f.name='sb-decky:valuation';f.src='https://steambalance.cc/booster/viral';document.body.append(f);});
  await page.waitForFunction(()=>[...document.querySelectorAll('iframe')].length===1);
  const remote=await page.waitForEvent('framenavigated',{predicate:f=>f.url().includes('steambalance.cc'),timeout:10000}).catch(()=>page.frames().find(f=>f.url().includes('steambalance.cc')));
  assert.ok(remote,'cross-site frame is missing');
  await remote.waitForFunction(()=>window.SteamBooster?.isSteamBooster,{timeout:10000});
  assert.equal(await remote.evaluate(()=>window.detected),true,'site must detect the installed API, including late attachment');
  assert.deepEqual(await remote.evaluate(()=>window.SteamBooster.getSteamId()),{steamId:'76561198000000000'});
+ const valuation=await remote.evaluate(()=>window.SteamBooster.getRateAccountData());
+ assert.equal(valuation.account.steam_id,'76561198000000000');
+ assert.equal(valuation.library.games[0].appid,570);
+ assert.equal(valuation.inventory.items[0].assetid,'test-item');
  // Exercise production layout code in Chromium: show/hide cannot reload a form.
  const modules={};
- for(const name of ['topup-theme','frame-layout','actions','relay','navigation']){
+ for(const name of ['topup-theme','frame-layout','actions','relay','navigation','keyboard']){
   modules['./'+name+'.ts']=ts.transpileModule(await readFile('src/'+name+'.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
  }
  await page.evaluate(modules=>{
   const cache={};const require=name=>{if(cache[name])return cache[name];const exports={};cache[name]=exports;new Function('exports','require',modules[name])(exports,require);return exports;};
   window.presentFrame=require('./frame-layout.ts').presentFrame;
-  window.theme=require('./topup-theme.ts');window.PageNavigation=require('./navigation.ts').PageNavigation;window.DeckyRelay=require('./relay.ts').DeckyRelay;
+  window.theme=require('./topup-theme.ts');window.FormKeyboard=require('./keyboard.ts').FormKeyboard;window.PageNavigation=require('./navigation.ts').PageNavigation;window.DeckyRelay=require('./relay.ts').DeckyRelay;
  },modules);
  await remote.locator('input').fill('saved-value');
  await page.evaluate(()=>{
@@ -69,10 +73,10 @@ try{
  assert.equal(await topup.locator('.root').count(),1);
  // Exercise the real bundled Svelte form, with every payment response mocked.
  // No request in this test can create a real order.
- let orders=0;
+ let orders=0,lastOrder;
  await context.route('https://checkout.example/**',async route=>{
-  if(route.request().url().endsWith('/calc'))await route.fulfill({json:{success:true,data:{amount:1000,amountToBalance:950,amountToBalanceUSD:10,amountToBalanceKZT:4500,minAmount:100,maxAmount:100000}}});
-  else{orders++;await route.fulfill({json:{success:true,data:{redirectUrl:'https://bank.example/order/fixture',uid:'fixture-order'}}});}
+  if(route.request().url().endsWith('/calc')){const amount=route.request().postDataJSON().amount;await route.fulfill({json:{success:true,data:{amount,amountToBalance:amount*.95,amountToBalanceUSD:amount/100,amountToBalanceKZT:amount*4.5,minAmount:100,maxAmount:100000}}});}
+  else{orders++;lastOrder=route.request().postDataJSON();await route.fulfill({json:{success:true,data:{redirectUrl:'https://bank.example/order/fixture',uid:'fixture-order'}}});}
  });
  await page.evaluate(()=>{
   const id=window.theme.TOPUP_ID;
@@ -101,7 +105,21 @@ try{
  await topup.locator('.picker .trigger').click();
  await topup.locator('.picker .menu button').last().click();
  await topup.waitForFunction(()=>!document.querySelector('.pay').disabled);
- await topup.locator('.amount-input').focus();
+ // Keyboard writes into the real original form and triggers its calculation.
+ await page.evaluate(()=>{
+  const node=document.getElementById('topup');window.keyboardShown=0;let active=false;
+  window.formKeyboard=new window.FormKeyboard(open=>{window.hideFrame();window.hideFrame=window.presentFrame({id:window.theme.TOPUP_ID,popup:true,frame:{node}},document.getElementById('host'),open);});
+  window.detachKeyboard=window.formKeyboard.attach(node.contentDocument,{ShowVirtualKeyboard:()=>{active=true;window.keyboardShown++;},HideVirtualKeyboard:()=>{active=false;},BIsActive:()=>active});
+ });
+ await topup.locator('.amount-input').click();
+ assert.equal(await page.evaluate(()=>window.keyboardShown),1);
+ const keyboardBounds=await page.locator('#topup').boundingBox();
+ assert.ok(keyboardBounds.y+keyboardBounds.height<400,'form must leave the lower half free for Steam keyboard');
+ await page.evaluate(()=>{for(const text of ['2','5','0','Enter'])window.formKeyboard.options.onTextEntered(text);});
+ assert.equal(await topup.locator('.amount-input').inputValue(),'250');
+ await topup.waitForFunction(()=>!document.querySelector('.pay').disabled);
+ assert.match(await topup.locator('.pay').innerText(),/250/);
+ await page.evaluate(()=>window.detachKeyboard());
  if(process.env.SCREENSHOT)await page.screenshot({path:process.env.SCREENSHOT});
  await page.setViewportSize({width:800,height:600});
  await page.waitForFunction(()=>parseInt(document.getElementById('topup').style.height)===568);
@@ -109,10 +127,11 @@ try{
  await topup.locator('.pay').scrollIntoViewIfNeeded();
  assert.ok(await topup.locator('.pay').isVisible());
  await page.setViewportSize({width:1280,height:800});
- await page.waitForFunction(()=>parseInt(document.getElementById('topup').style.height)===660);
+ await page.waitForFunction(()=>parseInt(document.getElementById('topup').style.height)===600);
  await topup.locator('.pay').click();
  await page.waitForFunction(()=>window.paymentURL==='https://bank.example/order/fixture');
  assert.equal(orders,1);
+ assert.equal(lastOrder.amount,250,'payment uses the amount entered through keyboard');
  assert.equal(await page.evaluate(()=>window.navigationCalls.includes('back')),false,'hide must not cancel payment navigation');
  await page.evaluate(()=>window.reopenPayment());
  assert.equal(orders,1,'reopening payment must not submit another order');

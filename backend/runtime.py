@@ -180,6 +180,17 @@ class Runtime:
         for meta in manifest['plugins']:
             entry = dict(meta, required=False, url=f"https://localhost/{meta['id']}.js", sha256=manifest['sha256'][meta['id']+'.js'], token=secrets.token_hex(16))
             self.entries.append(entry)
+        # Deck-only presentation adapter; original checkout still owns purchases.
+        store_source = Path(__file__).parent/'store-offers.js'
+        self.entries.append({
+            'id':'decky-store', 'version':'1.0.0', 'apiVersion':1,
+            'contextKinds':['web'], 'urlPatterns':[r'^https://store\.steampowered\.com(/.*)?$'],
+            'grantedCapabilities':['bus','pages'], 'allowedHosts':[],
+            'subscribeTopics':['booster-checkout.keys.response','booster-checkout.keys.email-required',
+                               'booster-checkout.keys.purchase-result','booster-checkout.keys.ready'],
+            'required':False, 'url':'https://localhost/decky-store.js',
+            'sha256':hashlib.sha256(store_source.read_bytes()).hexdigest(), 'token':secrets.token_hex(16),
+        })
         self.website = Website(self.cdp, self.invoke, self.navigate_store, self.store_action)
         self.spawn(self.events())
         await self.cdp.evaluate(f'globalThis.__sb_decky_configure({json.dumps({"secret":self.secrets["relaySecret"], "uiKinds": UI_KINDS})})', self.main_session)
@@ -217,7 +228,7 @@ class Runtime:
         status = await self.inspect(session, context)
         if not can_claim(status, self.owner):
             raise RuntimeError('conflict: framework already present')
-        manifest = {'injectorVersion': 'decky-0.1.4', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
+        manifest = {'injectorVersion': 'decky-0.1.5', 'contextKind': kind, 'deckyCombined': combined, 'userDisabledPlugins': [], 'plugins': entries, '_sec': self.secrets}
         prefix = (VENDOR/'bootstrap.js').read_text().replace('__MANIFEST__', json.dumps(manifest))
         await self.cdp.evaluate(prefix + f';globalThis.__sb_decky_owner={json.dumps(self.owner)};', session, context)
         # Track ownership immediately so even a failed bundle is cleaned up.
@@ -244,7 +255,8 @@ class Runtime:
                 await self.cdp.evaluate('globalThis.BroadcastChannel=globalThis.__sb_decky_originalBC; delete globalThis.__sb_decky_originalBC;', session, context)
         self.spawn(self.pump(session, context))
         for entry in entries:
-            code = f'globalThis.__SB_PLUGIN_BOOT__={json.dumps({"id":entry["id"],"token":entry["token"]})};' + (VENDOR/(entry['id']+'.js')).read_text()
+            source = Path(__file__).parent/'store-offers.js' if entry['id']=='decky-store' else VENDOR/(entry['id']+'.js')
+            code = f'globalThis.__SB_PLUGIN_BOOT__={json.dumps({"id":entry["id"],"token":entry["token"]})};' + source.read_text()
             await self.cdp.evaluate(code, session, context)
 
     async def events(self):
@@ -406,6 +418,21 @@ class Runtime:
                 topic = args.get('topic')
                 if not isinstance(topic, str) or not topic or len(topic) > 256:
                     raise ValueError('invalid bus topic')
+                if topic.startswith('decky-store.'):
+                    routes = {'decky-store.keys.request':'booster-addfunds.keys.request',
+                              'decky-store.keys.purchase':'booster-addfunds.keys.purchase'}
+                    if (topic not in routes or request.get('pluginId') != 'booster-framework'
+                            or not self.secrets.get('frameworkToken')
+                            or request.get('token') != self.secrets['frameworkToken']
+                            or not any(p['id']=='decky-store' for p in self.entries)):
+                        raise ValueError('store operation not allowed')
+                    data = args.get('data')
+                    field = 'appid' if topic.endswith('.request') else 'itemId'
+                    if (not isinstance(data, dict) or not isinstance(data.get('reqId'), str)
+                            or not 0 < len(data['reqId']) <= 128
+                            or type(data.get(field)) is not int or not 0 < data[field] <= 9007199254740991):
+                        raise ValueError('invalid store request')
+                    topic = routes[topic]
                 code = f'globalThis.__sb_bus_dispatch?.({json.dumps(topic)},{json.dumps(args.get("data"))})'
                 await asyncio.gather(*(self.cdp.evaluate(code, sid, ctx, timeout=5) for sid, ctx in list(self.bus_targets)), return_exceptions=True)
                 return {'ok': True, 'result': None}

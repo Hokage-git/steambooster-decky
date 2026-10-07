@@ -42,3 +42,17 @@ test('controller selects visible fields, writes through native setter and clicks
   assert.equal(window.document.querySelector('button')!.style.outline,'','only the selected control is highlighted');
   window.happyDOM.abort();
 });
+
+test('controller activation follows the field focused by touch and does not edit checkboxes as text',()=>{
+ const window=new Window({url:'https://steamloopback.host/'});
+ window.document.body.innerHTML='<button>Menu</button><input aria-label="Amount" value="1000"><input type="checkbox" aria-label="Consent">';
+ for(const element of window.document.querySelectorAll('input,button')){
+  (element as any).getBoundingClientRect=()=>({width:80,height:40});(element as any).scrollIntoView=()=>{};
+ }
+ const invoke=(action:string)=>window.eval(`(${controls})(${JSON.stringify(action)},"")`);
+ const amount=window.document.querySelector('input')!;amount.focus();
+ assert.equal(invoke('read').label,'Amount');
+ const checkbox=window.document.querySelectorAll('input')[1];checkbox.focus();
+ assert.equal(invoke('activate').input,false);assert.equal(checkbox.checked,true);
+ window.happyDOM.abort();
+});

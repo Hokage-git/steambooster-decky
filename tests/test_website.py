@@ -91,7 +91,7 @@ class WebsiteTests(unittest.IsolatedAsyncioTestCase):
         async def action(name): actions.append(name)
         self.host.store_action=action
         await self.create('https://store.steampowered.com')
-        self.assertIn('SteamBooster',self.cdp.calls[-1][0])
+        self.assertIn('sb-decky-store-tools',self.cdp.calls[-1][0])
         async def press(name='catalog', context=7):
             await self.host.event({'method':'Runtime.bindingCalled','sessionId':'web','params':{'name':self.host.store_binding,'executionContextId':context,'payload':name}})
         await press()

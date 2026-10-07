@@ -1,6 +1,6 @@
 export const TOPUP_ID='booster-checkout__sb_topup';
 export const TOPUP_WIDTH=680;
-export const TOPUP_HEIGHT=660;
+export const TOPUP_HEIGHT=600;
 const css=`
 [data-sb-decky-topup] .decky-help { margin:16px 0 0; text-align:center; color:#a7bed1; font-size:13px; }
 html[data-sb-decky-topup],html[data-sb-decky-topup] body { background:#101923; height:100%; overflow:auto; color:#f3f7fb; }
@@ -35,7 +35,7 @@ html[data-sb-decky-topup],html[data-sb-decky-topup] body { background:#101923; h
 [data-sb-decky-topup] .pay { border-radius:8px; min-height:56px; margin:0; padding:14px 20px; font-size:18px; color:white; background:linear-gradient(100deg,#2089dd,#116dc0); box-shadow:0 4px 14px #0074cc33; }
 [data-sb-decky-topup] .pay:hover:not(:disabled) { background:#259ced; }
 [data-sb-decky-topup] .pay:disabled { background:#2b3c4d; color:#a3b5c7; box-shadow:none; }
-[data-sb-decky-topup] .promo-gap { height:16px; }
+[data-sb-decky-topup] .promo-gap,[data-sb-decky-topup] .promo { display:none; }
 [data-sb-decky-topup] .promo { width:100%; height:64px; padding:8px 16px; border:1px solid #36495d; border-radius:12px; background:#1d2c3c; }
 [data-sb-decky-topup] .promo-btn { font-size:15px; min-height:44px; height:auto; padding:12px 18px; color:#e5f5ff; background:#314d65; }
 [data-sb-decky-topup] .promo-money { display:none; }
@@ -43,5 +43,5 @@ html[data-sb-decky-topup],html[data-sb-decky-topup] body { background:#101923; h
 @media(max-width:520px){ [data-sb-decky-topup] body{padding:12px;} [data-sb-decky-topup] .root{padding:16px;gap:12px;} [data-sb-decky-topup] .box .label{font-size:12px;} [data-sb-decky-topup] .box .input-cell{flex-basis:110px;} }
 `;
 export function topupHTML(html:string):string {
- return html.replace('<html ', '<html data-sb-decky-topup ').replace('</head>',`<style data-sb-decky-theme>${css}</style></head>`).replace('</body>','<p class="decky-help">A — выбрать · X — ввести текст · B — назад</p></body>');
+ return html.replace('<html ', '<html data-sb-decky-topup ').replace('</head>',`<style data-sb-decky-theme>${css}</style></head>`).replace('</body>','<p class="decky-help">A — выбрать или ввести сумму · B — назад</p></body>');
 }

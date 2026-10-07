@@ -79,3 +79,22 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             runtime.cdp=FailedCDP()
             with self.assertRaisesRegex(RuntimeError,'plugin'):
                 await runtime.wait_plugins('main',['booster-checkout'])
+
+    async def test_deck_store_messages_use_existing_checkout_with_validated_framework_token(self):
+        from backend.runtime import Runtime
+        from unittest.mock import AsyncMock
+        with tempfile.TemporaryDirectory() as temporary:
+            r=Runtime(Path(temporary))
+            r.cdp=type('CDP',(),{'evaluate':AsyncMock()})()
+            r.bus_targets={('main',None)}
+            r.secrets={'frameworkToken':'session-token'}
+            r.entries=[{'id':'decky-store'}]
+            for action,field in [('request','appid'),('purchase','itemId')]:
+                request={'op':'bus.publish','pluginId':'booster-framework','token':'session-token','args':{'topic':'decky-store.keys.'+action,'data':{'reqId':'test',field:570}}}
+                result=await r.native(request)
+                self.assertTrue(result['ok'])
+                self.assertIn('booster-addfunds.keys.'+action,r.cdp.evaluate.call_args.args[0])
+                before=r.cdp.evaluate.call_count
+                request['token']='wrong'
+                self.assertFalse((await r.native(request))['ok'])
+                self.assertEqual(r.cdp.evaluate.call_count,before)
